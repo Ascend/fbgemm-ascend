@@ -134,8 +134,6 @@ public:
 #ifdef SUPPORT_950
         this->AICore().AddConfig("ascend950", aicore_config);
 #endif
-        sed -i "1i #define SUPPORT_950" ./op_host/dense_embedding_codegen_lookup_function.cpp
-        sed -i "1i #define SUPPORT_950" ./op_host/dense_embedding_codegen_lookup_function_grad.cpp
     }
 };
 
