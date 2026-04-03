@@ -40,11 +40,30 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 vendor_name="block_bucketize_sparse_features"
 export AI_CORE_PROFILE="c310"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/block_bucketize_sparse_features.json")"
 
 parse_arguments "$@" || exit 1
 
 # ==============================================================================
 # 4. 执行标准化流程
 # ==============================================================================
+
+gen_build_dir() {
+    local work_dir="$1"
+    local vendor_name="$2"
+    rm -rf "${work_dir}/${vendor_name}"
+    local json_file="${OPERATOR_JSON_FILE:-${work_dir}/${vendor_name}.json}"
+    msopgen gen -i "${json_file}" -f tf -c "${ai_core}" -lan cpp -out "${work_dir}/${vendor_name}" \
+        -m 0 -op BlockBucketizeSparseFeaturesComputeNewLengths || return 1
+    msopgen gen -i "${json_file}" -f tf -c "${ai_core}" -lan cpp -out "${work_dir}/${vendor_name}" \
+        -m 1 -op BlockBucketizeSparseFeaturesScatterNewIndices || return 1
+    if [ -d "${work_dir}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
+        export MAJOR_VERSION=8
+    fi
+    if [ "${MAJOR_VERSION}" -ge 9 ]; then
+        overwrite_source_with_target "${work_dir}/${vendor_name}" \
+            "${__PROJECT_ROOT}/custom_op_template" || return 1
+    fi
+}
 
 build_and_install_operator "$WORK_DIR" "$vendor_name" || exit 1
