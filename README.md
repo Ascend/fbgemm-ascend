@@ -38,7 +38,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/sparse_ops/block_bucketize_sparse_features | 无                                                                                                                                                                       |
 | src/sparse_ops/expand_into_jagged_permute | [c310](src/sparse_ops/expand_into_jagged_permute/c310/README.md)                                                                                                        |
 | src/sparse_ops/invert_permute | [c310](src/sparse_ops/invert_permute/c310/README.md)                                                                                                                    |
-| src/sparse_ops/offsets_range | 无                                                                                                                                                                       |
+| src/sparse_ops/offsets_range | [v220](src/sparse_ops/offsets_range/v220/README.md) |
 | src/sparse_ops/permute2d_sparse_data | [v220](src/sparse_ops/permute2d_sparse_data/v220/README.md)                                                                                                             |
 | src/sparse_ops/segment_sum_csr | [v220](src/sparse_ops/segment_sum_csr/v220/README.md)                                                                                                                   |
 | src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function | [c310](src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/c310/README.md)                                                                               |
