@@ -17,6 +17,7 @@ See the License for the specific language governing permissions and
 #define BLOCK_BUCKETIZE_SPARSE_FEATURES_KERNEL_SIMPLIFIED_H
 
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include "kernel_operator.h"
@@ -31,6 +32,12 @@ constexpr int32_t SCATTER_THREADS_PER_BLOCK = 512; // 1024线程数将导致寄�
 constexpr int32_t WARPS_PER_BLOCK = MAX_THREADS_PER_BLOCK / warpSize;
 constexpr int32_t SCATTER_WARPS_PER_BLOCK = SCATTER_THREADS_PER_BLOCK / warpSize;
 constexpr int32_t MAX_FEATURE_NUM_USE_QUICK_DIVIDE = 500;
+
+template <typename T>
+__aicore__ inline constexpr T UintDivMaxDividend()
+{
+    return static_cast<T>(std::numeric_limits<typename std::make_signed<T>::type>::max());
+}
 
 template <typename IndexT, bool useQuickDiv>
 __aicore__ inline IndexT ComputeBucket(
@@ -58,7 +65,11 @@ __aicore__ inline IndexT ComputeBucket(
     if (isPowerOfTwo) {
         return static_cast<IndexT>(idx & (mySize - 1));
     }
-    return static_cast<IndexT>(idx % mySize);
+    if (idx > UintDivMaxDividend<UIndexT>()) {
+        return static_cast<IndexT>(idx % mySize);
+    }
+    const UIndexT q = AscendC::Simt::UintDiv<UIndexT>(idx, mySizeMagic, static_cast<UIndexT>(mySizeShift));
+    return static_cast<IndexT>(idx - q * mySize);
 }
 
 template <typename IndexT, bool useQuickDiv>
@@ -83,7 +94,10 @@ __aicore__ inline IndexT ComputeNewIndex(
         }
         return static_cast<IndexT>(idx % blkSize);
     }
-    return static_cast<IndexT>(idx / mySize);
+    if (idx > UintDivMaxDividend<UIndexT>()) {
+        return static_cast<IndexT>(idx / mySize);
+    }
+    return static_cast<IndexT>(AscendC::Simt::UintDiv<UIndexT>(idx, mySizeMagic, static_cast<UIndexT>(mySizeShift)));
 }
 
 template <typename OffsetT, typename IndexT, bool useQuickDiv, bool batchSizeIsOne>

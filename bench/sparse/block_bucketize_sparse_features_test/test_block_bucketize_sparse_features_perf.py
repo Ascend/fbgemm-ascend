@@ -670,3 +670,105 @@ def test_fixed_large_random_stress(index_type, has_weight, bucketize_pos, sequen
     )
     kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'weights'])
     _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("my_size", [2, 3, 5, 7])
+@pytest.mark.parametrize("index_type", [torch.int32, torch.int64])
+def test_block_bucketize_uintdiv_threshold_boundary(sequence, my_size, index_type):
+    """
+    覆盖 simplified kernel 中快除法阈值分支（int32 和 int64）。
+    - idx 在有符号最大值以内时走 Simt::UintDiv
+    - idx 超过有符号最大值时退回硬件 / 和 %
+    同时构造 power-of-two 与非 power-of-two 的 my_size，分别覆盖
+    ComputeBucket 和 ComputeNewIndex 的阈值切换行为。
+    """
+    iinfo = torch.iinfo(index_type)
+    signed_max = iinfo.max
+    signed_min = iinfo.min
+    indices = torch.tensor([
+        signed_max - 1,              # 阈值下，走 UintDiv
+        signed_max,                  # 阈值点，仍走 UintDiv
+        signed_min,                  # 阈值上（按无符号为 2^(N-1)），走硬件除法
+        signed_min + 1,              # 阈值上，余数最小变化
+        signed_min + (my_size - 1),  # 阈值上，余数边界
+        -1,                          # 无符号最大值
+        -my_size,
+        -(my_size + 1),
+        my_size * 4 + 1,
+    ], dtype=index_type)
+    lengths = torch.tensor([indices.numel()], dtype=torch.int32)
+    block_sizes = torch.tensor([4], dtype=index_type)
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=True,
+        sequence=sequence,
+        keep_orig_idx=False,
+    )
+    kwargs_npu = _make_npu_kwargs(kwargs_cpu, DEVICE, ['lengths', 'indices', 'block_sizes', 'weights'])
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
+
+
+@pytest.mark.parametrize("keep_orig_idx", [False, True])
+@pytest.mark.parametrize("sequence", [False, True])
+@pytest.mark.parametrize("my_size", [3, 5, 7])
+@pytest.mark.parametrize("index_type", [torch.int32, torch.int64])
+def test_full_kernel_fastdivmod_threshold_boundary(keep_orig_idx, sequence, my_size, index_type):
+    """
+    覆盖 full kernel 中 FastDivmod::Div/Mod 的阈值边界（int32 和 int64）。
+    full kernel 通过 block_bucketize_pos 触发，FastDivmod 在以下路径被调用：
+    - fdMySize.Mod(idxUnsigned)：当 idx 落在 pos 表范围外（lb < 0 或 lb >= mySize）
+    - fdMySize.Div(idxUnsigned)：同上条件下计算 finalIndex（keep_orig_idx=False 时）
+    keep_orig_idx=True 时 finalIndex 直接取原始值，但 bucket 仍走 fdMySize.Mod。
+    indices 精确覆盖有符号最大值两侧的阈值边界。
+    """
+    iinfo = torch.iinfo(index_type)
+    signed_max = iinfo.max
+    signed_min = iinfo.min
+    block_size = 4
+    pos_boundary = block_size * my_size
+    indices = torch.tensor([
+        signed_max - 1,
+        signed_max,
+        signed_min,
+        signed_min + 1,
+        signed_min + (my_size - 1),
+        -1,
+        -my_size,
+        -(my_size + 1),
+        pos_boundary + 1,           # 超出 blkSizeMulMySize，走 fdMySize 路径
+        pos_boundary + my_size + 1,
+        my_size * 4 + 1,
+    ], dtype=index_type)
+    lengths = torch.tensor([indices.numel()], dtype=index_type)
+    block_sizes = torch.tensor([block_size], dtype=index_type)
+    total_num_blocks = torch.tensor([my_size], dtype=index_type)
+    weights = torch.randn(indices.numel(), dtype=torch.float32).uniform_(-1.0, 1.0)
+    block_bucketize_pos_cpu = [
+        torch.tensor(list(range(0, pos_boundary + 1, block_size)), dtype=index_type),
+    ]
+
+    kwargs_cpu = _op_kwargs(
+        lengths=lengths,
+        indices=indices,
+        block_sizes=block_sizes,
+        my_size=my_size,
+        weights=weights,
+        bucketize_pos=True,
+        sequence=sequence,
+        keep_orig_idx=keep_orig_idx,
+        total_num_blocks=total_num_blocks,
+        block_bucketize_pos=block_bucketize_pos_cpu,
+    )
+    kwargs_npu = _make_npu_kwargs(
+        kwargs_cpu, DEVICE,
+        ['lengths', 'indices', 'block_sizes', 'weights', 'total_num_blocks'],
+        list_keys=['block_bucketize_pos'],
+    )
+    _validate_npu_matches_cpu(kwargs_cpu, kwargs_npu)
