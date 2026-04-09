@@ -90,3 +90,39 @@ def test_asynchronous_exclusive_cumsum(dtype, device, length, is_mxrec):
     golden = get_exclusive_result(t_int)
     result = get_exclusive_ops_result(t_int.to(device), is_mxrec)
     assert torch.equal(result, golden)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("num_vecs", [0, 1, 2, 5, 10])
+@pytest.mark.parametrize("num_entries", [0, 1, 10, 60, 100, 1000])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_complete_cumsum_2d(dtype, device, num_vecs, num_entries, is_mxrec):
+    t_in = torch.randint(0, 100, (num_vecs, num_entries), dtype=dtype)
+    golden = get_result(t_in)
+    result = get_ops_result(t_in.to(device), is_mxrec)
+    assert torch.equal(result, golden)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("num_vecs", [0, 1, 2, 5, 10])
+@pytest.mark.parametrize("num_entries", [0, 1, 10, 60, 100, 1000])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_inclusive_cumsum_2d(dtype, device, num_vecs, num_entries, is_mxrec):
+    t_in = torch.randint(0, 100, (num_vecs, num_entries), dtype=dtype)
+    golden = get_inclusive_result(t_in)
+    result = get_inclusive_ops_result(t_in.to(device), is_mxrec)
+    assert torch.equal(result, golden)
+
+
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("device", ["npu:0"])
+@pytest.mark.parametrize("num_vecs", [0, 1, 2, 5, 10])
+@pytest.mark.parametrize("num_entries", [0, 1, 10, 60, 100, 1000])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_asynchronous_exclusive_cumsum_2d(dtype, device, num_vecs, num_entries, is_mxrec):
+    t_in = torch.randint(0, 100, (num_vecs, num_entries), dtype=dtype)
+    golden = get_exclusive_result(t_in)
+    result = get_exclusive_ops_result(t_in.to(device), is_mxrec)
+    assert torch.equal(result, golden)

@@ -66,7 +66,7 @@ e) 算子约束说明：
 * 支持的型号：Atlas A5系列产品;
 * 支持的CANN版本：8.3.RC1及之后版本；
 * 支持的输入数据类型：int32；int64
-* 输入的数据只支持1维。
+* 输入的数据只支持 1 维或 2 维。
 * 算子参数均会在NPU显存中存放，请根据显存大小合理设置参数长度。
 * 最大支持输入长度：理论上无限制，实际受NPU显存大小约束
 
@@ -78,14 +78,14 @@ a) Tiling实现
 
 **TilingFunc函数**：
 - 从context中获取输入参数信息（输入shape、数据类型等）
-- 进行输入有效性校验：确保输入为1维张量，支持int32/int64数据类型
+- 进行输入有效性校验：确保输入为 1 维或 2 维张量，支持int32/int64数据类型
 - 根据输入长度选择算法策略
 - 计算资源分配：
   - 根据输入长度计算所需Block数量
   - 获取可用AI Core数量，实现负载均衡
   - 计算每个Core处理的Block数量
 - 工作空间计算：
-   - SharedMemory空间：存储每个Block的累积和
+  - SharedMemory空间：存储每个Block的累积和
   - 系统工作空间：AscendC平台所需空间
 
 **TilingData结构**：
@@ -100,8 +100,8 @@ a) Tiling实现
 b) Shape推导
 
 **InferShape函数**：
-- 输入：1维张量，长度为N
-- 输出：1维张量，长度为N+1
+- 输入：1 维或 2 维张量，长度为(B, N)
+- 输出：1 维或 2 维张量，长度为(B, N+1)
 - 前N个元素为前缀和结果，第N+1个元素为总和
 - 支持动态shape（-1表示未知长度）
 
@@ -130,41 +130,41 @@ b) 解析tiling参数：`GET_TILING_DATA(tilingData, tiling)`从TilingData中获
 
 c) 核心算法实现：
 
-   **小数据模式**：
-   - 使用SIMT向量化函数`SimtSmallDataCompute`进行并行计算
-   - 采用Warp级前缀和算法：每个Warp内部使用`WarpPrefixSum`进行并行前缀和计算
-   - 通过共享内存实现Block级同步和前缀和聚合
-   - 支持多Block场景下的两阶段更新：使用ReduceSum指令计算块级的前缀和
+**小数据模式**：
+- 使用SIMT向量化函数`SimtSmallDataCompute`进行并行计算
+- 采用Warp级前缀和算法：每个Warp内部使用`WarpPrefixSum`进行并行前缀和计算
+- 通过共享内存实现Block级同步和前缀和聚合
+- 支持多Block场景下的两阶段更新：使用ReduceSum指令计算块级的前缀和
 
-   **大数据模式**：
-   - 第一阶段：`SimtLargeDataCompute` - 每个线程处理多个元素，计算局部前缀和
-   - 第二阶段：使用ReduceSum指令计算块级的前缀和，更新当前Block的输出
-   - 支持多核并行：每个AI Core处理多个Block，通过`blocksPerCore`和`remainderBlocks`实现负载均衡
+**大数据模式**：
+- 第一阶段：`SimtLargeDataCompute` - 每个线程处理多个元素，计算局部前缀和
+- 第二阶段：使用ReduceSum指令计算块级的前缀和，更新当前Block的输出
+- 支持多核并行：每个AI Core处理多个Block，通过`blocksPerCore`和`remainderBlocks`实现负载均衡
 
 d) 关键技术特性：
 
-   **内存优化**：
-  - 共享内存用于Block内Warp间通信，减少全局内存访问
+**内存优化**：
+- 共享内存用于Block内Warp间通信，减少全局内存访问
 
-   **并行策略**：
-   - 最大支持1024个线程/Block，32个线程/Warp
-   - 小数据模式：每个线程处理1个元素
-   - 大数据模式：每个线程最多处理4个元素
-   - 支持多AI Core并行执行
+**并行策略**：
+- 最大支持1024个线程/Block，32个线程/Warp
+- 小数据模式：每个线程处理1个元素
+- 大数据模式：每个线程最多处理4个元素
+- 支持多AI Core并行执行
 
-   **前缀和算法**：
-   - Warp级前缀和：使用`WarpShflUpSync`进行线程间数据交换
-   - Block级前缀和：通过共享内存聚合Warp结果
-   - 全局前缀和：通过BlockSums实现跨Block的累积
-   
+**前缀和算法**：
+- Warp级前缀和：使用`WarpShflUpSync`进行线程间数据交换
+- Block级前缀和：通过共享内存聚合Warp结果
+- 全局前缀和：通过BlockSums实现跨Block的累积
+
 4. 性能优化特性
 
 a) **内存访问优化**：
-   - 共享内存通信：Block内Warp间通过共享内存通信，减少全局内存访问
-   - 向量化处理：使用SIMT向量化函数，提高指令吞吐量
+- 共享内存通信：Block内Warp间通过共享内存通信，减少全局内存访问
+- 向量化处理：使用SIMT向量化函数，提高指令吞吐量
 
 b) **并行计算优化**：
-   - 多级并行：Warp级、Block级、Core级三级并行
-   - 负载均衡：智能分配Block到不同AI Core，避免负载不均
-   - 异步执行：支持多Block异步并行执行
+- 多级并行：Warp级、Block级、Core级三级并行
+- 负载均衡：智能分配Block到不同AI Core，避免负载不均
+- 异步执行：支持多Block异步并行执行
    
