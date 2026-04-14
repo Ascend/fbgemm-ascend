@@ -1,0 +1,42 @@
+[
+  {
+    "op": "RunLengthEncode",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "sorted_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "unique_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "unique_indices_count",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "unique_indices_length",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "return_count",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      }
+    ]
+  }
+]
