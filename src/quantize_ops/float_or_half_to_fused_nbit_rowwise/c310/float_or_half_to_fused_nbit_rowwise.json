@@ -1,0 +1,41 @@
+[
+    {
+        "op": "FloatOrHalfToFusedNbitRowwise",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "input",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "float32",
+                    "float16"
+                ]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "output",
+                "param_type": "required",
+                "format": [
+                    "ND",
+                    "ND"
+                ],
+                "type": [
+                    "uint8",
+                    "uint8"
+                ]
+            }
+        ],
+        "attr": [
+            {
+                "name": "bitRate",
+                "param_type": "required",
+                "type": "int"
+            }
+        ]
+    }
+]

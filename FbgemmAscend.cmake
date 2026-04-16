@@ -3,6 +3,7 @@ set(ASCENDC_STAGE_SUBDIRS "")
 set_property(GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS "")
 
 set(ASCENDC_A5_ONLY_OPS
+    float_or_half_to_fused_nbit_rowwise
     block_bucketize_sparse_features
     expand_into_jagged_permute
     invert_permute
@@ -93,6 +94,7 @@ function(_fbgemm_add_ascendc_op vendor_name source_dir build_ver ai_core stage_d
 endfunction()
 
 set(_ASCENDC_OPS
+    "float_or_half_to_fused_nbit_rowwise|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_or_half_to_fused_nbit_rowwise"
     "asynchronous_complete_cumsum|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/asynchronous_complete_cumsum"
     "block_bucketize_sparse_features|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/block_bucketize_sparse_features"
     "expand_into_jagged_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/expand_into_jagged_permute"
@@ -159,6 +161,7 @@ get_property(ASCENDC_TARGETS GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS)
 # C++ 适配层源文件（新增算子在此追加）
 # ---------------------------------------------------------------------------
 set(FBGEMM_ASCEND_ADAPTER_SRCS
+    src/quantize_ops/float_or_half_to_fused_nbit_rowwise/float_or_half_to_fused_nbit_rowwise.cpp
     src/sparse_ops/asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp
     src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
     src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
