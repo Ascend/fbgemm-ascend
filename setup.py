@@ -50,7 +50,7 @@ def cmake_args():
 
 skbuild_setup(
     name="fbgemm_ascend",
-    version="1.5.0",
+    version="1.2.0",
     description="FBGEMM Ascend NPU operators (torch.ops.fbgemm on NPU)",
     packages=setuptools.find_packages(),
     install_requires=["numpy"],

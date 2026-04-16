@@ -9,7 +9,7 @@ import torch
 import fbgemm_gpu  # noqa: F401  — 注册 fbgemm::* schema 及 CPU 实现
 
 open_source: bool = True
-__version__: str = "1.5.0"
+__version__: str = "1.2.0"
 
 
 def _package_has_opp(payload_dir: str) -> bool:
