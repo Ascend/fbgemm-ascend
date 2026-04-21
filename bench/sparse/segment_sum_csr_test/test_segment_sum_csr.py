@@ -37,8 +37,11 @@ def get_golden(batch_size: int, csr_seg: torch.Tensor, values: torch.Tensor):
     return y
 
 
-def get_op(csr_seg: torch.Tensor, values: torch.Tensor, batch_size: int):
-    y = torch.ops.mxrec.segment_sum_csr(csr_seg, values, batch_size)
+def get_op(batch_size: int, csr_seg: torch.Tensor, values: torch.Tensor, is_mxrec: bool):
+    if is_mxrec:
+        y = torch.ops.mxrec.segment_sum_csr(batch_size, csr_seg, values)
+    else:
+        y = torch.ops.fbgemm.segment_sum_csr(batch_size, csr_seg, values)
     return y
 
 
@@ -81,13 +84,23 @@ def generate_random_segment_sum_data(device, csr_type, v_type):
 
 
 @pytest.mark.parametrize("csr_type", [torch.int32, torch.int64])
-@pytest.mark.parametrize("v_type", [torch.float32])
-def test_segment_sum_csr(csr_type, v_type):
+@pytest.mark.parametrize("v_type", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("is_mxrec", [True, False])
+def test_segment_sum_csr(csr_type, v_type, is_mxrec):
     torch.npu.set_device(DEVICE)
     batch_size, csr_seg, values = generate_random_segment_sum_data("cpu", csr_type, v_type)
-    segment_sum_npu = get_op(csr_seg.to(DEVICE), values.to(DEVICE), batch_size.item())
-    segment_sum_golden = get_golden(batch_size.item(), csr_seg, values)
-    torch.testing.assert_allclose(segment_sum_golden, segment_sum_npu.cpu(), rtol=0.0001, atol=0.0001)
+    segment_sum_npu = get_op(batch_size.item(), csr_seg.to(DEVICE), values.to(DEVICE), is_mxrec)
+    # golden用更高精度的cpu实现
+    segment_sum_golden = get_golden(batch_size.item(), csr_seg, values.to(torch.float32)).to(v_type)
+
+    if v_type == torch.float16:
+        rtol, atol = 2 ** (-7), 2 ** (-7)
+    elif v_type == torch.bfloat16:
+        rtol, atol = 2 ** (-6), 2 ** (-6)
+    else:
+        rtol, atol = 2 ** (-9), 2 ** (-9)
+
+    torch.testing.assert_close(segment_sum_npu.cpu(), segment_sum_golden, rtol=rtol, atol=atol)
 
 
 if __name__ == "__main__":
