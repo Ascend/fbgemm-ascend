@@ -97,17 +97,24 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
                                                           const at::Tensor& uvm_cache_stats,
                                                           const int64_t output_dtype,
                                                           const bool is_experimental,
-                                                          const at::Tensor& hash_indices,
-                                                          const at::Tensor& offset_per_key,
-                                                          const at::Tensor& rows_per_table)
+                                                          const c10::optional<at::Tensor>& hash_indices,
+                                                          const c10::optional<at::Tensor>& offset_per_key,
+                                                          const c10::optional<at::Tensor>& rows_per_table)
 {
     const int64_t totalD = total_D.guard_int(__FILE__, __LINE__);
     const int64_t maxD = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
+    const at::Tensor default_tensor = at::empty();
+    const at::Tensor hash_indices_ = hash_indices.has_value() && hash_indices->defined()
+            ? hash_indices.value() : default_tensor;
+    const at::Tensor offset_per_key_ = offset_per_key.has_value() && offset_per_key->defined()
+            ? offset_per_key.value() : default_tensor;
+    const at::Tensor rows_per_table_ = rows_per_table.has_value() && rows_per_table->defined()
+            ? rows_per_table.value() : default_tensor;
 
     validate_forward_data_inputs(dev_weights, weights_offsets, D_offsets, indices,
-                                 offsets, hash_indices, offset_per_key, rows_per_table);
+                                 offsets, hash_indices_, offset_per_key_, rows_per_table_);
 
     int64_t featCnt = weights_offsets.size(0);
     int32_t totalLen = indices.numel();
@@ -128,8 +135,8 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
 
     int64_t experimental = static_cast<int64_t>(is_experimental);
     EXEC_NPU_CMD(aclnnSplitEmbeddingCodegenForwardUnweighted, dev_weights, uvm_weights, lxu_cache_weights,
-                 weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices,
-                 offset_per_key, rows_per_table, totalD, maxD, pooling_mode, output_dtype, experimental, output);
+                 weights_placements, weights_offsets, D_offsets, indices, offsets, lxu_cache_locations, hash_indices_,
+                 offset_per_key_, rows_per_table_, totalD, maxD, pooling_mode, output_dtype, experimental, output);
     return output;
 }
 
@@ -153,12 +160,19 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor uvm_cache_stats, "
           "    int output_dtype, "
           "    bool is_experimental, "
-          "    Tensor hash_indices = None, "
-          "    Tensor offset_per_key = None, "
-          "    Tensor rows_per_table = None "
+          "    Tensor? hash_indices = None, "
+          "    Tensor? offset_per_key = None, "
+          "    Tensor? rows_per_table = None "
           ") -> Tensor");
 
     m.impl("split_embedding_codegen_forward_unweighted_cuda",
         torch::dispatch(c10::DispatchKey::Autograd,
-                        TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
+                        static_cast<at::Tensor(*)(const at::Tensor&, const at::Tensor&, const at::Tensor&,
+                                                  const at::Tensor&, const at::Tensor&, const at::Tensor&,
+                                                  const c10::SymInt, const c10::SymInt, const at::Tensor&,
+                                                  const at::Tensor&, const int64_t, const at::Tensor&,
+                                                  const at::Tensor&, const int64_t, const bool,
+                                                  const c10::optional<at::Tensor>&, const c10::optional<at::Tensor>&,
+                                                  const c10::optional<at::Tensor>&)>
+                        (&fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
 }
