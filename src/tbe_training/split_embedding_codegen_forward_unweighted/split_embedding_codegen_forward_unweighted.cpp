@@ -105,7 +105,7 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
     const int64_t maxD = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
-    const at::Tensor default_tensor = at::empty();
+    const at::Tensor default_tensor = at::Tensor();
     const at::Tensor hash_indices_ = hash_indices.has_value() && hash_indices->defined()
             ? hash_indices.value() : default_tensor;
     const at::Tensor offset_per_key_ = offset_per_key.has_value() && offset_per_key->defined()
