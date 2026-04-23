@@ -104,18 +104,79 @@ at::Tensor permute_pooled_embs_impl_npu(
     return output;
 }
 
-TORCH_LIBRARY_FRAGMENT(mxrec, m) {
-    m.def("permute_pooled_embs(Tensor pooled_embs, "
-          "                    Tensor offset_dim_list, "
-          "                    Tensor permute_list, "
-          "                    Tensor inv_offset_dim_list, "
-          "                    Tensor inv_permute_list) -> Tensor");
+at::Tensor permute_pooled_embs_split_impl_npu(
+    const at::Tensor& pooled_embs,
+    const at::Tensor& offset_dim_list,
+    const at::Tensor& permute_list,
+    const at::Tensor& inv_offset_dim_list,
+    const at::Tensor& inv_permute_list)
+{
+    return permute_pooled_embs_impl_npu(pooled_embs, offset_dim_list, permute_list, inv_offset_dim_list, inv_permute_list);
 }
 
-TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m) {
-    m.impl("permute_pooled_embs", &permute_pooled_embs_impl_npu);
+//通过继承torch::autograd::Function实现自动求导
+class PermutePooledEmbsFunctionSplit
+    : public torch::autograd::Function<PermutePooledEmbsFunctionSplit>{
+public:
+    static at::Tensor forward(
+        AutogradContext* ctx,
+        const at::Tensor& pooled_embs,
+        const at::Tensor& offset_dim_list,
+        const at::Tensor& permute_list,
+        const at::Tensor& inv_offset_dim_list,
+        const at::Tensor& inv_permute_list)
+    {
+        at::AutoDispatchBelowADInplaceOrView guard;
+        ctx->save_for_backward({pooled_embs, offset_dim_list, permute_list, inv_offset_dim_list, inv_permute_list});
+
+        return permute_pooled_embs_impl_npu(pooled_embs, offset_dim_list, permute_list, inv_offset_dim_list, inv_permute_list);
+    }
+
+    static tensor_list backward(
+        const AutogradContext* ctx,
+        const tensor_list grad_output)
+    {
+        auto saved = ctx->get_saved_variables();
+        const auto& offset_dim_list = saved[1];
+        const auto& permute_list = saved[2];
+        const auto& inv_offset_dim_list = saved[3];
+        const auto& inv_permute_list = saved[4];
+
+        tensor_list grad_inputs(5);
+
+        grad_inputs[0] = permute_pooled_embs_impl_npu(
+            grad_output[0],
+            inv_offset_dim_list,
+            inv_permute_list,
+            offset_dim_list,
+            permute_list
+        );
+
+        return grad_inputs;
+    }
+};
+
+//使用的时候调用apply()方法
+at::Tensor permute_pooled_embs_auto_grad_split_impl_npu(
+    const at::Tensor& pooled_embs,
+    const at::Tensor& offset_dim_list,
+    const at::Tensor& permute_list,
+    const at::Tensor& inv_offset_dim_list,
+    const at::Tensor& inv_permute_list)
+{
+    return PermutePooledEmbsFunctionSplit::apply(
+        pooled_embs, offset_dim_list, permute_list, inv_offset_dim_list, inv_permute_list);
 }
 
-TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m) {
+TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
+{
     m.impl("permute_pooled_embs", &permute_pooled_embs_impl_npu);
+    m.impl("permute_pooled_embs_split", &permute_pooled_embs_split_impl_npu);
+    m.impl("permute_pooled_embs_auto_grad_split", &permute_pooled_embs_auto_grad_split_impl_npu);
+}
+
+//注册自动求导实现
+TORCH_LIBRARY_IMPL(fbgemm, AutogradPrivateUse1, m)
+{
+    m.impl("permute_pooled_embs_auto_grad_split", &permute_pooled_embs_auto_grad_split_impl_npu);
 }
