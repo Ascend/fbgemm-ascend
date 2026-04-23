@@ -41,15 +41,15 @@ def set_seed(seed):
 set_seed(10000)
 
 
-def get_result(tensors: dict, device: str = 'cpu', is_mxrec: bool = False):
+def get_result(tensors: dict, device: str = 'cpu', use_split: bool = False):
     tensors = {k: torch.from_numpy(v) if isinstance(v, np.ndarray) else v for k, v in tensors.items()}
 
     if device and device.startswith('npu'):
         torch.npu.set_device(device)
         tensors = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in tensors.items()}
 
-    if is_mxrec:
-        results = torch.ops.mxrec.permute_pooled_embs(**tensors)
+    if use_split:
+        results = torch.ops.fbgemm.permute_pooled_embs_split(**tensors)
     else:
         results = torch.ops.fbgemm.permute_pooled_embs(**tensors)
 
@@ -65,8 +65,8 @@ SHAPE_LIST = list(itertools.product(T, B))
 
 @pytest.mark.parametrize("types", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
+@pytest.mark.parametrize("use_split", [True, False])
+def test_permute_pooled_embs_aligned(types, shapes, use_split):
     """
     Params:
         pooled_embs: (B, sum(embs_dims)) dtype=etype
@@ -99,7 +99,7 @@ def test_permute_pooled_embs_aligned(types, shapes, is_mxrec):
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE, is_mxrec)
+    result = get_result(params, DEVICE, use_split)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
@@ -114,8 +114,8 @@ SHAPE_LIST = list(itertools.product(T, B))
 
 @pytest.mark.parametrize("types", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_permute_pooled_embs_unaligned(types, shapes, is_mxrec):
+@pytest.mark.parametrize("use_split", [True, False])
+def test_permute_pooled_embs_unaligned(types, shapes, use_split):
     """
     Params:
         pooled_embs: (B, sum(embs_dims)) dtype=etype
@@ -146,7 +146,7 @@ def test_permute_pooled_embs_unaligned(types, shapes, is_mxrec):
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE, is_mxrec)
+    result = get_result(params, DEVICE, use_split)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
@@ -161,8 +161,8 @@ SHAPE_LIST = list(itertools.product(T, B))
 
 @pytest.mark.parametrize("types", [torch.float32, torch.float16, torch.bfloat16])
 @pytest.mark.parametrize("shapes", SHAPE_LIST)
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_permute_pooled_embs_aligned_embs(types, shapes, is_mxrec):
+@pytest.mark.parametrize("use_split", [True, False])
+def test_permute_pooled_embs_aligned_embs(types, shapes, use_split):
     """
     Params:
         pooled_embs: (B, sum(embs_dims)) dtype=etype
@@ -195,7 +195,7 @@ def test_permute_pooled_embs_aligned_embs(types, shapes, is_mxrec):
     }
 
     golden = get_result(params)
-    result = get_result(params, DEVICE, is_mxrec)
+    result = get_result(params, DEVICE, use_split)
 
     for gt, pred in zip(golden, result):
         assert type(gt) is type(pred)
