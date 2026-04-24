@@ -47,11 +47,13 @@ namespace fbgemm_npu_lookups {
         check_tensor_non_empty(D_offsets, "D_offsets");
         check_tensor_non_empty(indices, "indices");
         check_tensor_non_empty(offsets, "offsets");
-        check_tensor_non_empty(offset_per_key, "offset_per_key");
-        if (rows_per_table.defined()) {
+        if (offset_per_key.defined() && offset_per_key.numel() > 0) {
+            check_tensor_non_empty(offset_per_key, "offset_per_key");
+        }
+        if (rows_per_table.defined() && rows_per_table.numel() > 0) {
             check_tensor_non_empty(rows_per_table, "rows_per_table");
         }
-        if (hash_indices.defined()) {
+        if (hash_indices.defined() && hash_indices.numel() > 0) {
             check_tensor_non_empty(hash_indices, "hash_indices");
         }
     }
@@ -79,8 +81,9 @@ namespace fbgemm_npu_lookups {
         check_tensor_non_empty(D_offsets, "D_offsets");
         check_tensor_non_empty(indices, "indices");
         check_tensor_non_empty(offsets, "offsets");
-        check_tensor_non_empty(offset_per_key, "offset_per_key");
-
+        if (offset_per_key.defined()) {
+            check_tensor_non_empty(offset_per_key, "offset_per_key");
+        }
         if (hash_indices.defined()) {
             check_tensor_non_empty(hash_indices, "hash_indices");
         }
