@@ -29,6 +29,7 @@ TILING_DATA_FIELD_DEF(int64_t, baseCoreSegments);
 TILING_DATA_FIELD_DEF(int64_t, remainedSegments);
 TILING_DATA_FIELD_DEF(int64_t, formerCoreSegments);
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, maxSegmentLen);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(SegmentSumCsr, SegmentSumCsrTilingData)

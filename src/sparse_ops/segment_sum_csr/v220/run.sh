@@ -34,6 +34,7 @@ if [ ! -f "$UTILS_SCRIPT" ]; then
 fi
 
 source "$UTILS_SCRIPT"
+export COPY_KERNEL_COMMON_UTILS="1"
 
 # ==============================================================================
 # 3. 参数配置
