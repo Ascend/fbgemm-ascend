@@ -50,6 +50,6 @@ extern "C" __global__ __aicore__ void lru_cache_insert_byte(
         reserved_out,
         workspace,
         tiling};
-    LruCacheInsertByte::LruCacheInsertByteKernel<DTYPE_INDEX> kernel(args);
+    LruCacheInsertByte::LruCacheInsertByteKernel<DTYPE_CACHE_SET_SORTED_UNIQUE_INDICES> kernel(args);
     kernel.Compute();
 }

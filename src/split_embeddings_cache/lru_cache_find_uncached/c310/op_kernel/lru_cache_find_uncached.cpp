@@ -36,6 +36,6 @@ extern "C" __global__ __aicore__ void lru_cache_find_uncached(
         cache_sets,
         workspace,
         tiling};
-    LruCacheFindUncached::LruCacheFindUncachedKernel<DTYPE_UNIQUE> kernel(args);
+    LruCacheFindUncached::LruCacheFindUncachedKernel<DTYPE_UNIQUE_INDICES> kernel(args);
     kernel.Compute();
 }

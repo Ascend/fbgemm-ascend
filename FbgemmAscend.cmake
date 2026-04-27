@@ -10,6 +10,8 @@ set(ASCENDC_A5_ONLY_OPS
     init_address_lookup
     int_nbit_split_embedding_codegen_lookup_function
     get_unique_indices
+    lru_cache_find_uncached
+    lru_cache_insert_byte
 )
 
 set(ASCENDC_A3_OPS
@@ -113,6 +115,8 @@ set(_ASCENDC_OPS
     "dense_embedding_codegen_lookup_function_grad|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/dense_embedding_codegen_lookup_function_grad"
     "split_embedding_codegen_forward_unweighted|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/split_embedding_codegen_forward_unweighted"
     "get_unique_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
+    "lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_find_uncached"
+    "lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_insert_byte"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
@@ -186,4 +190,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
+    src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
 )

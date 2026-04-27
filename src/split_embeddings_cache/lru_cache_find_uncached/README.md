@@ -1,6 +1,6 @@
 # lru_cache_find_uncached说明
 
-本算子仅支持NPU调用。
+本算子是实现lru_cache_populate_byte的子接口，不支持直接调用，lru_cache_populate_byte参考[lru_cache_populate_byte](../lru_cache_populate_byte/README.md)
 
 ## 产品支持情况
 
@@ -16,7 +16,6 @@ lru_cache_find_uncached
    |-- op_host                        # 算子 host 侧实现
    |-- op_kernel                      # 算子 kernel 侧实现
    |-- lru_cache_find_uncached.json   # 算子原型配置
-   |-- README.md                      # 算子说明文档
    |-- run.sh                         # 算子编译部署脚本
 ```
 
