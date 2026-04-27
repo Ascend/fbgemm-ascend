@@ -37,12 +37,12 @@ from common import (
 
 class JaggedToPaddedDenseTest(unittest.TestCase):
     @given(
-        num_jagged_dim=st.just(1),  # Only supports ops with num_jagged_dim=1
+        num_jagged_dim=st.integers(1, 5),
         outer_dense_size=st.integers(0, 5),
         inner_dense_size=st.integers(0, 5),
         fold_inner_dense=st.just(False),  # Not supports ops with 1D values
         padding_value=st.sampled_from([0, -1e-8]),
-        dtype=st.sampled_from([torch.float, torch.half, torch.bfloat16]),
+        dtype=st.sampled_from([torch.float, torch.half, torch.bfloat16, torch.int32, torch.int64]),
         device_type=cpu_and_maybe_npu(),
     )
     @settings(verbosity=Verbosity.verbose, max_examples=20, deadline=None)
