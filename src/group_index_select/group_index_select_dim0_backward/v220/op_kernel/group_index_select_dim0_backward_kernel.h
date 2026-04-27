@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef GROUP_INDEX_SELECT_DIM0_FUN_H
-#define GROUP_INDEX_SELECT_DIM0_FUN_H
+#ifndef GROUP_INDEX_SELECT_DIM0_BACKWARD_FUN_H
+#define GROUP_INDEX_SELECT_DIM0_BACKWARD_FUN_H
 
 #include <cstdint>
 #include "kernel_operator.h"
 
 using namespace AscendC;
 
-namespace GroupIndexSelectDim0 {
+namespace GroupIndexSelectDim0Backward {
 
 constexpr uint32_t BASIC_BLOCK = 32;
 constexpr int DATA_ALIGN_BYTES = 32;
@@ -35,9 +35,9 @@ constexpr uint32_t MAX_NUM_GROUPS = 32;
 constexpr int ONEBLOCK_ELEM = 4096;
 
 struct Args {
-    GM_ADDR inputGroups;
+    GM_ADDR gradOutputs;
     GM_ADDR indicesGroups;
-    GM_ADDR outputGroups;
+    GM_ADDR inputReturnGroups;
 
     GM_ADDR workspace;
     GM_ADDR tiling;
@@ -100,21 +100,21 @@ __aicore__ constexpr T MinValue(T t, Args... args)
 }
 
 template <typename inputType>
-class GroupIndexSelectDim0Kernel {
+class GroupIndexSelectDim0BackwardKernel {
 public:
-    __aicore__ inline GroupIndexSelectDim0Kernel(Args args)
+    __aicore__ inline GroupIndexSelectDim0BackwardKernel(Args args)
     {
         GET_TILING_DATA(tilingData, args.tiling);
 
-        inputPtr = args.inputGroups;
+        gradPtr = args.gradOutputs;
         indicesPtr = args.indicesGroups;
-        outputPtr = args.outputGroups;
+        inputReturnPtr = args.inputReturnGroups;
 
         groupNum =  tilingData.groupNum;
         for (int32_t i = 0; i < groupNum; i++) {
             groupIndicesLen[i] = tilingData.groupIndicesLen[i];
             groupInnerDim[i] = tilingData.groupInnerDim[i];
-            groupInputRows[i] = tilingData.groupInputRows[i];
+            groupGradRows[i] = tilingData.groupGradRows[i];
         }
 
         pipe.InitBuffer(gatherDataQue, BUFFER_NUM, GATHER_DATA_UB_BYTE_SIZE);
@@ -135,13 +135,13 @@ public:
             coreProcOffset = coreIdx * splitPrevCoreProcTask;
         } else if (coreIdx < actualCoreNum) {
             coreProcSize = splitNextCoreProcTask;
-            coreProcOffset = splitCoreIdx * splitPrevCoreProcTask + (coreIdx - splitCoreIdx) * splitNextCoreProcTask;
+            coreProcOffset = coreIdx * splitPrevCoreProcTask + (coreIdx - splitCoreIdx) * splitNextCoreProcTask;
         } else {
             coreProcSize = 0;
             coreProcOffset = 0;
         }
     }
-
+    
     __aicore__ inline __gm__ inputType *GetTensorAddr(GM_ADDR tensorList, uint32_t index)
     {
         __gm__ uint64_t *dataAddr = reinterpret_cast<__gm__ uint64_t *>(tensorList);
@@ -155,12 +155,12 @@ public:
     {
         uint32_t coreProcSize = 0;
         uint32_t coreProcOffset = 0;
-        uint32_t coreTaskNum = this->groupIndicesLen[runArgs.curGroupIdx];
+        uint32_t coreTaskNum = this->groupGradRows[runArgs.curGroupIdx];
         int32_t groupInnerDim = this->groupInnerDim[runArgs.curGroupIdx];
         CoreSplitPolicy(coreTaskNum, coreProcSize, coreProcOffset);
 
         uint32_t maxIndicesBatchSize = AlignDown(static_cast<uint32_t>(INDICES_UB_BYTE_SIZE / sizeof(uint32_t)), BASIC_BLOCK);
-        uint32_t gatherDataBatchSize = AlignDown(static_cast<uint32_t>(GATHER_DATA_UB_BYTE_SIZE / (sizeof(inputType) * groupInnerDim)), BASIC_BLOCK);
+        uint32_t gatherDataBatchSize = AlignDown(static_cast<uint32_t>(GATHER_DATA_UB_BYTE_SIZE / sizeof(inputType) * groupInnerDim), BASIC_BLOCK);
         uint32_t batchSize = MinValue(gatherDataBatchSize, maxIndicesBatchSize, coreProcSize);
 
         runArgs.batchSize = batchSize;
@@ -186,33 +186,30 @@ public:
             return;
         }
 
-        LocalTensor<int64_t> indexLt = indicesQue.AllocTensor<int64_t>();
-
-        CpGm2Local(indexLt, curIndicesGt[batchOffset], batchSize);
-
-        indicesQue.EnQue(indexLt);
-        indexLt = indicesQue.DeQue<int64_t>();
-        pipe_barrier(PIPE_ALL);
-
-        LocalTensor<inputType> gatherDataLt = gatherDataQue.AllocTensor<inputType>();
-
         for (uint32_t i = 0; i < batchSize; i++) {
-            int32_t rowIdx = indexLt.GetValue(i);
-            if (rowIdx >= 0 && rowIdx < groupInputRows[groupIdx]) {
-                CpGm2Local(gatherDataLt[i * innerDim], curInputGt[rowIdx * innerDim], innerDim);
-            } else {
-                Duplicate(gatherDataLt[i * innerDim], static_cast<inputType>(0), innerDim);
-            }
+            LocalTensor<int64_t> indicesLt = indicesQue.AllocTensor<int64_t>();
+            CpGm2Local(indicesLt, curIndicesGt[batchOffset], batchSize);
+            indicesQue.EnQue(indicesLt);
+            indicesLt = indicesQue.DeQue<int64_t>();
+
+            LocalTensor<inputType> gatherDataLt = gatherDataQue.template AllocTensor<inputType>();
+            Duplicate(gatherDataLt, static_cast<inputType>(0), gatherDataLt.GetSize());
+            int64_t rowIdx = indicesLt.GetValue(i);
+
+            CpGm2Local(gatherDataLt, curGradGt[(i + batchOffset) * innerDim], innerDim);
+
+            gatherDataQue.EnQue(gatherDataLt);
+            gatherDataLt = gatherDataQue.DeQue<inputType>();
+            pipe_barrier(PIPE_ALL);
+
+            SetAtomicAdd<inputType>();
+            CpLocal2Gm(curInputReturnGt[(rowIdx) * innerDim], gatherDataLt, innerDim);
+            SetAtomicNone();
+            pipe_barrier(PIPE_ALL);
+
+            gatherDataQue.FreeTensor(gatherDataLt);
+            indicesQue.FreeTensor<int64_t>(indicesLt);
         }
-
-        indicesQue.FreeTensor(indexLt);
-
-        gatherDataQue.EnQue(gatherDataLt);
-        gatherDataLt = gatherDataQue.DeQue<inputType>();
-        pipe_barrier(PIPE_ALL);
-
-        CpLocal2Gm(curOutputGt[batchOffset * innerDim], gatherDataLt, batchSize * innerDim);
-        gatherDataQue.FreeTensor(gatherDataLt);
     }
 
     __aicore__ inline void ProcessGroup(uint32_t groupIdx)
@@ -220,8 +217,8 @@ public:
         RunArgs runArgs;
         runArgs.curGroupIdx = groupIdx;
 
-        curInputGt.SetGlobalBuffer((__gm__ inputType *)GetTensorAddr(inputPtr, groupIdx));
-        curOutputGt.SetGlobalBuffer((__gm__ inputType *)GetTensorAddr(outputPtr, groupIdx));
+        curGradGt.SetGlobalBuffer((__gm__ inputType *)GetTensorAddr(gradPtr, groupIdx));
+        curInputReturnGt.SetGlobalBuffer((__gm__ inputType *)GetTensorAddr(inputReturnPtr, groupIdx));
         curIndicesGt.SetGlobalBuffer((__gm__ int64_t *)GetTensorAddr(indicesPtr, groupIdx));
 
         calBatch(runArgs);
@@ -244,24 +241,20 @@ public:
     }
 
 private:
-    GM_ADDR inputPtr;
+    GM_ADDR gradPtr;
     GM_ADDR indicesPtr;
-    GM_ADDR outputPtr;
+    GM_ADDR inputReturnPtr;
 
     // Tiling
     int32_t groupNum;
     int32_t groupIndicesLen[MAX_NUM_GROUPS];
     int32_t groupInnerDim[MAX_NUM_GROUPS];
-    int32_t groupInputRows[MAX_NUM_GROUPS];
+    int32_t groupGradRows[MAX_NUM_GROUPS];
 
     // Gt
-    GlobalTensor<inputType> curInputGt;
+    GlobalTensor<inputType> curGradGt;
     GlobalTensor<int64_t> curIndicesGt;
-    GlobalTensor<inputType> curOutputGt;
-
-    // LocalTensors
-    LocalTensor<int64_t> indicesLt;
-    LocalTensor<inputType> gatherDataLt;
+    GlobalTensor<inputType> curInputReturnGt;
 
     // TPipe
     TPipe pipe;

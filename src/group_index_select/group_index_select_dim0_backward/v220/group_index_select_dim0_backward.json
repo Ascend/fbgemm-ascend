@@ -1,0 +1,36 @@
+[
+    {
+        "op": "GroupIndexSelectDim0Backward",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "gradOutputs",
+                "param_type": "required",
+                "format_list": ["ND", "ND"],
+                "data_type_list": ["fp32", "fp16"]
+            },
+            {
+                "name": "indicesGroups",
+                "param_type": "required",
+                "format_list": ["ND", "ND"],
+                "data_type_list": ["int64"]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "inputReturnGroups",
+                "param_type": "required",
+                "format_list": ["ND", "ND"],
+                "data_type_list": ["fp32", "fp16"]
+            }
+        ],
+        "attr": [
+            {
+                "name": "groupNum",
+                "param_type": "required",
+                "data_type_list": ["int32"],
+                "default_value": 0
+            }
+        ]
+    }
+]
