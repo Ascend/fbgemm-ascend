@@ -2,6 +2,10 @@
 
 该样例基于 PyTorch 2.7.1 和 Python 3.11.0 运行。
 
+## 编译与部署
+
+算子编译与部署请参考 [README.md](../../../README.md) 中 "源码编译与安装" 章节。
+
 ## 算子调用示例
 
 ```python
@@ -80,9 +84,4 @@ hash_table_offsets = hash_table_offsets.to(current_device)
 dense_indices_lookup = torch.ops.fbgemm.pruned_hashmap_lookup(indices, offsets, hash_table, hash_table_offsets)
 ```
 
-## 编译与部署
-
-算子编译与部署请参考 [README.md](../../../README.md) 中 "源码编译与安装" 章节。
-
-> **提示**
-> 以上示例仅展示基本用法，如需更全面的测试用例，请参考完整测试文件：[test](../../../bench/tbe_inference/pruned_hashmap_lookup/test_pruned_hashmap_lookup.py)。
+以上示例仅展示基本用法，如需更全面的测试用例，请参考测试文件：[test](../../../bench/tbe_inference/pruned_hashmap_lookup/test_pruned_hashmap_lookup.py)。
