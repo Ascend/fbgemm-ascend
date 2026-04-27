@@ -19,11 +19,12 @@ See the License for the specific language governing permissions and
 
 #include "ops_log.h"
 
+constexpr int32_t GRAD_INDEX = 0;
+constexpr int32_t INDICES_INDEX = 1;
+
 namespace optiling {
 constexpr int RESERVE_UB_SIZE = 20 * 1024;
 constexpr uint32_t MAX_GROUP_NUM = 32;
-constexpr int32_t GRAD_INDEX = 0;
-constexpr int32_t INDICES_INDEX = 1;
 
 template <typename T>
 bool GetValueAttr(const gert::RuntimeAttrs *attrs, uint32_t idx, T &value)
