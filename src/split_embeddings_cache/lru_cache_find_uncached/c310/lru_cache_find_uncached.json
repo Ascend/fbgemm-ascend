@@ -1,0 +1,78 @@
+[
+  {
+    "op": "LruCacheFindUncached",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "unique_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "unique_indices_length",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "lxu_cache_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "lru_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "uvm_cache_stats",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "lxu_cache_locking_counter",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "cache_sets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "gather_cache_stats",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "max_indices",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "lru_timestamp",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "lock_cache_line",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      }
+    ]
+  }
+]
