@@ -107,6 +107,7 @@ set(_ASCENDC_OPS
     "init_address_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/intraining_embedding_pruning_ops/init_address_lookup"
     "dense_to_jagged|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/dense_to_jagged"
     "jagged_to_padded_dense|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense"
+    "jagged_to_padded_dense_v2|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense_v2"
     "select_dim1_to_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/select_dim1_to_permute"
     "permute_pooled_embs|${FBGEMM_ASCEND_SOURCE_DIR}/src/pooled_embedding_ops/permute_pooled_embs"
     "int_nbit_split_embedding_codegen_lookup_function|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function"

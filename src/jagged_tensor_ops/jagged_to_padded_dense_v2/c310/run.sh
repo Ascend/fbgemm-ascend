@@ -40,7 +40,7 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 vendor_name="jagged_to_padded_dense_v2"
 export AI_CORE_PROFILE="c310"
-export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/jagged_to_padded_dense.json")"
+export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/${vendor_name}.json")"
 export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
 export INSERT_SUPPORT_950_PATHS="op_host/${vendor_name}.cpp"
 
