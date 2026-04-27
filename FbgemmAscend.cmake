@@ -174,7 +174,9 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/sparse_ops/segment_sum_csr/segment_sum_csr.cpp
     src/intraining_embedding_pruning_ops/init_address_lookup/init_address_lookup.cpp
     src/jagged_tensor_ops/dense_to_jagged/dense_to_jagged.cpp
-    src/jagged_tensor_ops/jagged_to_padded_dense/jagged_to_padded_dense.cpp
+    src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_impl.cpp
+    src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v1.cpp
+    src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v2.cpp
     src/jagged_tensor_ops/select_dim1_to_permute/keyed_jagged_index_select_dim1.cpp
     src/pooled_embedding_ops/permute_pooled_embs/permute_pooled_embs.cpp
     src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/int_nbit_split_embedding_codegen_lookup_function.cpp
