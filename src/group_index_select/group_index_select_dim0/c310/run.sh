@@ -40,9 +40,6 @@ source "$UTILS_SCRIPT"
 # ==============================================================================
 vendor_name="group_index_select_dim0"
 export AI_CORE_PROFILE="c310"
-export OPERATOR_JSON_FILE="$(readlink -f "${WORK_DIR}/../v220/group_index_select_dim0.json")"
-export OPERATOR_SOURCE_ROOT="$(readlink -f "${WORK_DIR}/../v220")"
-export INSERT_SUPPORT_950_PATHS="op_host/${vendor_name}.cpp"
 
 parse_arguments "$@" || exit 1
 
