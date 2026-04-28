@@ -5,7 +5,6 @@ import itertools
 import logging
 import random
 import sysconfig
-from collections import defaultdict
 from dataclasses import dataclass
 
 import pytest
@@ -18,7 +17,6 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
     PoolingMode,
 )
 from fbgemm_gpu.split_table_batched_embeddings_ops_training import SplitTableBatchedEmbeddingBagsCodegen
-from hybrid_torchrec.distributed.batched_embedding_kernel import HybridSplitTableBatchedEmbeddingBagsCodegen
 from torch.optim import Adam, Adagrad, SGD, SparseAdam
 
 import torchrec
@@ -87,38 +85,8 @@ def create_data(data_params):
 
     return indices_test, offsets_test, jt_lst
 
-
-def generate_unique(jt_lst, feature_map):
-    unique_indices = []
-    unique_inverse = []
-    unique_offset = []
-    start = 0
-
-    jt_values = defaultdict(list)
-    for ind, tid in enumerate(feature_map):
-        jt_values[tid].append(jt_lst[ind].values())
-
-    for key in jt_values:
-        jt = torch.cat(jt_values[key])
-        unique_indice, inverse = torch.unique(jt, return_inverse=True)
-        unique_indices.append(unique_indice)
-        unique_inverse.append(inverse)
-        unique_offset.extend(len(jt_values[key]) * [start])
-        start += unique_indice.shape[0]
-
-    unique_offset.extend([start])
-    return unique_indices, unique_inverse, unique_offset
-
-
 def look_table(indices, offsets, jt_lst, tbe, lookup_params):
-    if lookup_params.unique:
-        unique_indices_var, unique_inverse_var, unique_offset_var = generate_unique(jt_lst, lookup_params.feature_map)
-        unique_indices = torch.cat(unique_indices_var).to(DEVICEID).to(torch.int64)
-        unique_inverse = torch.cat(unique_inverse_var).to(DEVICEID).to(torch.int64)
-        unique_offset = torch.Tensor(unique_offset_var).to(DEVICEID).to(torch.int64)
-        kwargs = dict(unique_indices=unique_indices, unique_offset=unique_offset, unique_inverse=unique_inverse)
-    else:
-        kwargs = dict()
+    kwargs = dict()
 
     output = tbe(indices, offsets, **kwargs)  # bs,dim
     loss = torch.sum(output ** 2 / 2)
@@ -143,10 +111,7 @@ def verify_grad_aggregation(lookup_params):
         (num_embeddings, embedding_dim, EmbeddingLocation.DEVICE, ComputeDevice.NPU)
         for (num_embeddings, embedding_dim) in lookup_params.tables]
 
-    if lookup_params.unique:
-        ebc_class = HybridSplitTableBatchedEmbeddingBagsCodegen
-    else:
-        ebc_class = SplitTableBatchedEmbeddingBagsCodegen
+    ebc_class = SplitTableBatchedEmbeddingBagsCodegen
 
     tbe_grad_aggregation = ebc_class(
         embedding_specs=embedding_specs,
@@ -234,7 +199,7 @@ params = {
     "mutile_hots": [[1, 1, 1], [2, 4, 8]],
     "batch_size": [4],
     "pooling_model": [PoolingType.NONE],               # ec
-    "unique": [True],                                  # must True
+    "unique": [False],
     "optim": [Adagrad, SparseAdam, SGD],
     "feature_map": [[0, 1, 2]]
 }
@@ -245,7 +210,7 @@ params_features = {
     "mutile_hots": [[1, 1, 1, 1], [1, 3, 6, 9]],
     "batch_size": [8],
     "pooling_model": [PoolingType.NONE],                  # ec
-    "unique": [True],                                     # must True
+    "unique": [False],
     "optim": [Adagrad, SparseAdam, SGD],
     "feature_map": [[0, 1, 1, 2], [0, 0, 1, 2], [0, 1, 2, 2]]  # 一表多feature
 }

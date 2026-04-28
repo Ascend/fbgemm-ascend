@@ -1,6 +1,6 @@
 numpy>=1.25.0
 torch==2.7.1+cpu
-torch_npu==2.7.1.post3.dev20260205
+torch_npu==2.7.1
 fbgemm_gpu==1.2.0+cpu
 scikit-build>=0.18.1
 cmake>=4.1.2
