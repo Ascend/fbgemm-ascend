@@ -43,7 +43,8 @@ BlockBucketizeResult block_bucketize_sparse_features_npu(
     int64_t max_B,
     const c10::optional<std::vector<at::Tensor>>& block_bucketize_pos,
     bool keep_orig_idx,
-    const c10::optional<at::Tensor>& total_num_blocks);
+    const c10::optional<at::Tensor>& total_num_blocks,
+    const c10::optional<at::Tensor>& keep_orig_idx_per_feature);
 
 std::tuple<at::Tensor, at::Tensor, c10::optional<at::Tensor>> permute1d_sparse_data_impl_npu(
     const at::Tensor& permute,

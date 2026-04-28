@@ -30,6 +30,7 @@ namespace fbgemm_npu_lookups {
 Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_cuda(
     const Tensor& grad_output, const Tensor& dev_weights, const Tensor& uvm_weights, const Tensor& lxu_cache_weights,
     const Tensor& weights_placements, const Tensor& weights_offsets, const Tensor& D_offsets, const c10::SymInt max_D,
+    const bool mixed_D,
     const Tensor& hash_size_cumsum, const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets,
     const int64_t pooling_mode, const Tensor& lxu_cache_locations, const int64_t BT_block_size,
     const int64_t max_segment_length_per_warp, const bool stochastic_rounding, const int64_t info_B_num_bits,
@@ -73,7 +74,7 @@ public:
 
         auto info_B_num_bits = max_B_;
         auto info_B_mask = T;
-        
+
         // EC查表，计算每张表的indices个数
         at::Tensor offset_per_key = compute_offset_per_key(offsets, weights_offsets, D_offsets);
 
@@ -195,9 +196,10 @@ public:
                 .findSchemaOrThrow("fbgemm::split_embedding_backward_codegen_adagrad_unweighted_exact_cuda", "")
                 .typed<decltype(split_embedding_backward_codegen_adagrad_unweighted_exact_cuda)>();
 
+        const bool mixed_D = true;
         const auto grad_dev_weights = embedding_codegen_unweighted_backward_op.call(
             grad_output, dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
-            max_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
+            max_D, mixed_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, momentum1_dev, momentum1_uvm,
             momentum1_placements, momentum1_offsets, grad_accumulate, grad_accumulate_offsets, hash_indices, unique_ids,
@@ -244,6 +246,7 @@ public:
             Variable(),        // eps
             Variable(),        // learning_rate
             Variable(),        // grad_accumulate_offsets
+            Variable(),        // mixed_D
             Variable(),        // use_optimize
         };
     }
@@ -299,9 +302,11 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
     const int64_t iter = 0,
     const bool apply_global_weight_decay = false,
     const double gwd_lower_bound = 0,
+    const bool mixed_D = true,
     bool use_optimize = true,
     const std::optional<Tensor>& rows_per_table = c10::optional<at::Tensor>())
 {
+    (void)mixed_D;
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
 
@@ -318,6 +323,7 @@ Tensor split_embedding_codegen_lookup_adagrad_function(
 at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
     const Tensor& grad_output, const Tensor& dev_weights, const Tensor& uvm_weights, const Tensor& lxu_cache_weights,
     const Tensor& weights_placements, const Tensor& weights_offsets, const Tensor& D_offsets, const c10::SymInt max_D,
+    const bool mixed_D,
     const Tensor& hash_size_cumsum, const int64_t total_hash_size_bits, const Tensor& indices, const Tensor& offsets,
     const int64_t pooling_mode, const Tensor& lxu_cache_locations, const int64_t BT_block_size,
     const int64_t max_segment_length_per_warp, const bool stochastic_rounding, const int64_t info_B_num_bits,
@@ -328,6 +334,7 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
     const at::Tensor& offset_per_key, const at::Tensor& table_grad_accumulate_offsets, double eps = 0,
     double learning_rate = 0, bool use_optimize = true)
 {
+    (void)mixed_D;
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
@@ -342,7 +349,7 @@ at::Tensor split_embedding_backward_codegen_adagrad_unweighted_exact_npu(
     auto output = at::empty({totalEmbed}, dev_weights.options().dtype(at::kFloat));
 
     int optim_type = static_cast<int>(OptimizerType::ADAGRAD);
-    
+
     double beta = 0;
     int64_t iter = 0;
 
@@ -373,8 +380,10 @@ Tensor split_embedding_codegen_lookup_adagrad_function_pt2(
     const int64_t output_dtype, const std::vector<std::optional<Tensor>>& aux_tensor,
     const std::vector<int64_t>& aux_int, const std::vector<double>& aux_float, c10::List<bool> aux_bool,
     TensorList momentum1, Tensor learning_rate_tensor, std::vector<double> optim_float, const c10::SymInt max_B = -1,
-    const c10::SymInt max_B_feature_rank = -1, const c10::SymInt vbe_output_size = -1)
+    const c10::SymInt max_B_feature_rank = -1, const c10::SymInt vbe_output_size = -1,
+    std::optional<Tensor> vbe_output = c10::nullopt)
 {
+    (void)vbe_output;
     // unpacking from weights: dev_weights uvm_weights weights_placements weights_offsets lxu_cache_weights
     check_param_len(weights.size(), WEIGHTS_SIZE, "weights");
     auto& dev_weights = weights[DEV_WEIGHTS_INDEX];
@@ -483,6 +492,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor? prev_iter_dev=None, int iter=0, "
           "    bool apply_global_weight_decay=False, "
           "    float gwd_lower_bound=0, "
+          "    bool mixed_D=True, "
           "    bool use_optimize = True, "
           "    Tensor? rows_per_table=None "
           ") -> Tensor");
@@ -507,6 +517,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor weights_offsets, "
           "    Tensor D_offsets, "
           "    SymInt max_D, "
+          "    bool mixed_D, "
           "    Tensor hash_size_cumsum, "
           "    int total_hash_size_bits, "
           "    Tensor indices, "

@@ -35,6 +35,7 @@ Tensor split_embedding_backward_codegen_sgd_unweighted_exact_cuda(const Tensor& 
                                                                   const Tensor& weights_offsets,
                                                                   const Tensor& D_offsets,
                                                                   const c10::SymInt max_D,
+                                                                  const bool mixed_D,
                                                                   const Tensor& hash_size_cumsum,
                                                                   const int64_t total_hash_size_bits,
                                                                   const Tensor& indices,
@@ -225,9 +226,10 @@ public:
                 .findSchemaOrThrow("fbgemm::split_embedding_backward_codegen_sgd_unweighted_exact_cuda", "")
                 .typed<decltype(split_embedding_backward_codegen_sgd_unweighted_exact_cuda)>();
 
+        const bool mixed_D = true;
         const auto grad_dev_weights = embedding_codegen_unweighted_backward_op.call(
             grad_output, dev_weights, uvm_weights, lxu_cache_weights, weights_placements, weights_offsets, D_offsets,
-            max_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
+            max_D, mixed_D, hash_size_cumsum, total_hash_size_bits, indices, offsets, pooling_mode, lxu_cache_locations,
             BT_block_size, max_segment_length_per_warp, stochastic_rounding, info_B_num_bits, info_B_mask_int64,
             use_uniq_cache_locations_bwd, use_homogeneous_placements, grad_accumulate, grad_accumulate_offsets,
             hash_indices, unique_ids, unique_offsets,
@@ -267,6 +269,7 @@ public:
             Variable(),       // unique_inverse
             Variable(),       // table_grad_accumulate_offsets
             Variable(),       // learning_rate
+            Variable(),       // mixed_D
             Variable(),       // use_optimize
         };
     }
@@ -317,9 +320,11 @@ Tensor split_embedding_codegen_lookup_sgd_function(
     const int64_t iter = 0,
     const bool apply_global_weight_decay = false,
     const double gwd_lower_bound = 0,
+    const bool mixed_D = true,
     bool use_optimize = true,
     const std::optional<Tensor>& rows_per_table = c10::optional<Tensor>())
 {
+    (void)mixed_D;
     // Set to experimental if either the feature is enabled in JK, or the user specifies to use TBEv2
     const auto is_experimental = is_experimental_tbe;
 
@@ -341,6 +346,7 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
                                                                      const Tensor& weights_offsets,
                                                                      const Tensor& D_offsets,
                                                                      const c10::SymInt max_D,
+                                                                     const bool mixed_D,
                                                                      const Tensor& hash_size_cumsum,
                                                                      const int64_t total_hash_size_bits,
                                                                      const Tensor& indices,
@@ -365,6 +371,7 @@ at::Tensor split_embedding_backward_codegen_sgd_unweighted_exact_npu(const Tenso
                                                                      double learning_rate = 0,
                                                                      bool use_optimize = true)
 {
+    (void)mixed_D;
     const int64_t t_max_D = max_D.guard_int(__FILE__, __LINE__);
 
     const at::OptionalDeviceGuard guard(device_of(dev_weights));
@@ -415,8 +422,10 @@ Tensor split_embedding_codegen_lookup_sgd_function_pt2(
     const std::vector<double>& aux_float, c10::List<bool> aux_bool,
     Tensor learning_rate_tensor,
     const c10::SymInt max_B = -1, const c10::SymInt max_B_feature_rank = -1,
-    const c10::SymInt vbe_output_size = -1)
+    const c10::SymInt vbe_output_size = -1,
+    std::optional<Tensor> vbe_output = c10::nullopt)
 {
+    (void)vbe_output;
     check_param_len(weights.size(), WEIGHTS_SIZE, "weights");
     // weights data: dev_weights uvm_weights weights_placements weights_offsets lxu_cache_weights
     auto& dev_weights = weights[DEV_WEIGHTS_INDEX];
@@ -513,6 +522,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    int iter=0, "
           "    bool apply_global_weight_decay=False, "
           "    float gwd_lower_bound=0, "
+          "    bool mixed_D=True, "
           "    bool use_optimize = True, "
           "    Tensor? rows_per_table=None "
           ") -> Tensor");
@@ -536,6 +546,7 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
           "    Tensor weights_offsets, "
           "    Tensor D_offsets, "
           "    SymInt max_D, "
+          "    bool mixed_D, "
           "    Tensor hash_size_cumsum, "
           "    int total_hash_size_bits, "
           "    Tensor indices, "

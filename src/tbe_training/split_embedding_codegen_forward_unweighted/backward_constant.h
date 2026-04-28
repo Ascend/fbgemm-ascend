@@ -23,9 +23,9 @@ constexpr int64_t WEIGHTS_OFFSETS_INDEX = 3;
 constexpr int64_t LXU_CACHE_WEIGHTS_INDEX = 4;
 
 // aux_tensor: B_offsets, vbe_output_offsets_feature_rank, vbe_B_offsets_rank_per_feature, lxu_cache_locations,
-//             uvm_cache_stats, prev_iter_dev
+//             uvm_cache_stats, vbe_output_offsets, prev_iter_dev
 // used by Adam, AdaGrad, SGD.
-constexpr size_t AUX_TENSOR_SIZE = 6;
+constexpr size_t AUX_TENSOR_SIZE = 7;
 constexpr int64_t LXU_CACHE_LOCATIONS_INDEX = 3;
 constexpr int64_t UVM_CACHE_STATS_INDEX = 4;
 

@@ -102,7 +102,8 @@ BucketizeResult block_bucketize_sparse_features_npu(
     const int64_t max_B,
     const c10::optional<std::vector<at::Tensor>>& block_bucketize_pos,
     const bool keep_orig_idx,
-    const c10::optional<at::Tensor>& total_num_blocks)
+    const c10::optional<at::Tensor>& total_num_blocks,
+    const c10::optional<at::Tensor>& keep_orig_idx_per_feature)
 {
     TORCH_CHECK(my_size > 0, "my_size must be positive.");
     if (lengths.scalar_type() == at::kInt) {
@@ -126,6 +127,9 @@ BucketizeResult block_bucketize_sparse_features_npu(
         names.push_back("total_num_blocks");
     }
     check_tensor_npu_device(tensors, names);
+    TORCH_CHECK(
+        !keep_orig_idx_per_feature.has_value(),
+        "keep_orig_idx_per_feature is not supported on NPU yet.");
     validate_supported_inputs(
         lengths,
         indices,
@@ -250,17 +254,32 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m) {
         "block_bucketize_sparse_features(Tensor lengths, Tensor indices, bool bucketize_pos, bool sequence, "
         "Tensor block_sizes, SymInt my_size, Tensor? weights=None, Tensor? batch_size_per_feature=None, "
         "SymInt max_B= -1, Tensor[]? block_bucketize_pos=None, bool keep_orig_idx=False, "
-        "Tensor? total_num_blocks=None) -> (Tensor, Tensor, Tensor?, Tensor?, Tensor?)");
+        "Tensor? total_num_blocks=None, Tensor? keep_orig_idx_per_feature=None) -> (Tensor, Tensor, Tensor?, Tensor?, Tensor?)");
 }
+
+using BlockBucketizeSparseFeaturesNpuFn = BlockBucketizeResult (*)(
+    const at::Tensor&,
+    const at::Tensor&,
+    bool,
+    bool,
+    const at::Tensor&,
+    int64_t,
+    const c10::optional<at::Tensor>&,
+    const c10::optional<at::Tensor>&,
+    int64_t,
+    const c10::optional<std::vector<at::Tensor>>&,
+    bool,
+    const c10::optional<at::Tensor>&,
+    const c10::optional<at::Tensor>&);
 
 TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m) {
     m.impl(
         "block_bucketize_sparse_features",
-        &block_bucketize_sparse_features_npu);
+        static_cast<BlockBucketizeSparseFeaturesNpuFn>(block_bucketize_sparse_features_npu));
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m) {
     m.impl(
         "block_bucketize_sparse_features",
-        &block_bucketize_sparse_features_npu);
+        static_cast<BlockBucketizeSparseFeaturesNpuFn>(block_bucketize_sparse_features_npu));
 }
