@@ -104,6 +104,7 @@ set(_ASCENDC_OPS
     "block_bucketize_sparse_features|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/block_bucketize_sparse_features"
     "expand_into_jagged_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/expand_into_jagged_permute"
     "invert_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/invert_permute"
+    "linearize_cache_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/linearize_cache_indices"
     "offsets_range|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/offsets_range"
     "permute2d_sparse_data|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/permute2d_sparse_data"
     "segment_sum_csr|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/segment_sum_csr"
@@ -177,6 +178,7 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
     src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
     src/sparse_ops/invert_permute/invert_permute.cpp
+    src/split_embeddings_cache/linearize_cache_indices/linearize_cache_indices.cpp
     src/sparse_ops/offsets_range/offsets_range.cpp
     src/sparse_ops/permute2d_sparse_data/permute1d_sparse_data.cpp
     src/sparse_ops/permute2d_sparse_data/permute2d_sparse_data.cpp

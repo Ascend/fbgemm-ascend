@@ -43,6 +43,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/pooled_embedding_ops/permute_pooled_embs | [v220](src/pooled_embedding_ops/permute_pooled_embs/v220/README.md)                                                                                                     |
 | src/quantize_ops/float_or_half_to_fused_nbit_rowwise | [c310](src/quantize_ops/float_or_half_to_fused_nbit_rowwise/c310/README.md)                                                                                                     |
 | src/split_embeddings_cache/get_unique_indices | [c310](src/split_embeddings_cache/get_unique_indices/c310/README.md)                                                                                                     |
+| src/split_embeddings_cache/linearize_cache_indices | [c310](src/split_embeddings_cache/linearize_cache_indices/c310/README.md) |
 | src/sparse_ops/asynchronous_complete_cumsum | [c310](src/sparse_ops/asynchronous_complete_cumsum/c310/README.md) / [v220](src/sparse_ops/asynchronous_complete_cumsum/v220/README.md)                                 |
 | src/sparse_ops/block_bucketize_sparse_features | 无                                                                                                                                                                       |
 | src/sparse_ops/expand_into_jagged_permute | [c310](src/sparse_ops/expand_into_jagged_permute/c310/README.md)                                                                                                        |
