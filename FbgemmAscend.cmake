@@ -199,4 +199,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/group_index_select/group_index_select_dim0/group_index_select_dim0.cpp
+    src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
 )

@@ -1,0 +1,114 @@
+[
+  {
+    "op": "LruCacheInsertByte",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "weights",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "cache_hash_size_cumsum",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "cache_index_table_map",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "weights_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "weights_tys",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "d_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "sorted_cache_sets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "cache_set_sorted_unique_indices",
+        "param_type": "required",
+        "format": ["ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "unique_indices_length",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "lxu_cache_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "lxu_cache_weights",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "lru_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "uvm_cache_stats",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "reserved_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "gather_cache_stats",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "lru_timestamp",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "row_alignment",
+        "param_type": "required",
+        "type": "int",
+        "default_value": 16
+      }
+    ]
+  }
+]

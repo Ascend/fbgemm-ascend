@@ -59,6 +59,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/tbe_training/split_embedding_codegen_forward_unweighted | [c310](src/tbe_training/split_embedding_codegen_forward_unweighted/c310/README.md) / [v220](src/tbe_training/split_embedding_codegen_forward_unweighted/v220/README.md) |
 | src/group_index_select/group_index_select_dim0 | [v220](src/group_index_select/group_index_select_dim0/v220/README.md) |
 | src/group_index_select/group_index_select_dim0_backward | [v220](src/group_index_select/group_index_select_dim0_backward/v220/README.md) |
+| src/split_embeddings_cache/lru_cache_populate_byte | [c310](src/split_embeddings_cache/lru_cache_populate_byte/README.md) |
 
 更多算子可在对应目录的 README.md 中查看具体接口、输入输出张量格式及样例代码。
 
