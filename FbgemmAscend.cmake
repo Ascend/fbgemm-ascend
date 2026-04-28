@@ -9,7 +9,7 @@ set(ASCENDC_A5_ONLY_OPS
     invert_permute
     init_address_lookup
     int_nbit_split_embedding_codegen_lookup_function
-    get_unique_indices
+    run_length_encode
     pruned_hashmap_lookup
     group_index_select_dim0
     group_index_select_dim0_backward
@@ -118,7 +118,7 @@ set(_ASCENDC_OPS
     "dense_embedding_codegen_lookup_function|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/dense_embedding_codegen_lookup_function"
     "dense_embedding_codegen_lookup_function_grad|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/dense_embedding_codegen_lookup_function_grad"
     "split_embedding_codegen_forward_unweighted|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/split_embedding_codegen_forward_unweighted"
-    "get_unique_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
+    "run_length_encode|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
     "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/group_index_select/group_index_select_dim0"
     "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/group_index_select/group_index_select_dim0_backward"
 )
