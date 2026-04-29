@@ -52,7 +52,7 @@ public:
     __aicore__ inline void DataCopyIn(LocalTensor<VALUE_TYPE>& tensor, int cur, int cnt)
     {
         if constexpr (ALIGN) {
-            DataCopy(tensor, valuesGT[cur * innerDenseSize], cnt * innerDenseSize32);
+            DataCopy(tensor, valuesGT[cur * innerDenseSize], cnt * innerDenseSize);
         } else {
             DataCopyExtParams copyParams{static_cast<uint16_t>(cnt),
                                          static_cast<uint32_t>(innerDenseSize * sizeof(VALUE_TYPE)), 0, 0, 0};
@@ -69,7 +69,8 @@ public:
                                        JaggedPosition<OFFSET_TYPE>& end)
     {
         int bound = offsetsGT[dim - 1].GetValue(end[dim - 1]) + end[dim];
-        int tensorsCnt = end[dim - 1] - start[dim - 1] + 1;
+        int residual = (end[dim] > 0);
+        int tensorsCnt = end[dim - 1] - start[dim - 1] + residual;
         int ubCumsum = 0;
         for (int i = 0; i < tensorsCnt; i++) {
             int pos[4];
@@ -91,6 +92,7 @@ public:
                                                  static_cast<uint32_t>(innerDenseSize * sizeof(VALUE_TYPE)), 0, 0, 0};
                     DataCopyPad(outGT[outPtr], tensor[ubCumsum * innerDenseSize32], copyParams);
                 }
+                pipe_barrier(PIPE_ALL);
             }
             ubCumsum += rawRows;
             start.Update(rawRows);
@@ -100,7 +102,7 @@ public:
     __aicore__ inline void Compute()
     {
         int remain = lenOfThisCore;
-        int processed = 0;
+        int cur = startOfThisCore;
 
         LocalTensor<VALUE_TYPE> tensor = inQueueX.AllocTensor<VALUE_TYPE>();
 
@@ -108,7 +110,6 @@ public:
             if (windowSize > remain) {
                 windowSize = remain;
             }
-            int cur = startOfThisCore + processed;
             JaggedPosition<OFFSET_TYPE> startPos(cur, offsetsGT, offsetsLens, maxLengths, dim, innerDenseSize);
             JaggedPosition<OFFSET_TYPE> endPos(cur + windowSize, offsetsGT, offsetsLens, maxLengths, dim, innerDenseSize);
             if (innerDenseSize == innerDenseSize32) {
@@ -120,7 +121,7 @@ public:
             }
 
             remain -= windowSize;
-            processed += windowSize;
+            cur += windowSize;
         }
         inQueueX.FreeTensor(tensor);
     }
