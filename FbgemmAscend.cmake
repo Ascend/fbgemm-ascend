@@ -123,8 +123,8 @@ set(_ASCENDC_OPS
     "run_length_encode|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
     "lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_find_uncached"
     "lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_insert_byte"
-    "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/group_index_select/group_index_select_dim0"
-    "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/group_index_select/group_index_select_dim0_backward"
+    "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
+    "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
@@ -203,5 +203,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
-    src/group_index_select/group_index_select_dim0/group_index_select_dim0.cpp
+    src/sparse_ops/group_index_select_dim0/group_index_select_dim0.cpp
 )
