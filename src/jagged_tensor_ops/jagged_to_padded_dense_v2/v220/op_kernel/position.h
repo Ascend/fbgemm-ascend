@@ -109,10 +109,8 @@ public:
             to = bound;
         }
 
-        int jaggedPos[MAX_OFFSETS_CNT + 1];
-        Row2JaggedPos(from, jaggedPos);
         int densePos[MAX_OFFSETS_CNT + 2];
-        JaggedPos2Dense<ROUND_NONE>(jaggedPos, densePos);
+        JaggedPos2Dense<ROUND_NONE>(pos_, densePos);
         int fromV;
         int toV;
         int rawSize = to - from;
@@ -122,7 +120,7 @@ public:
         } else {
             fromV = from;
             int validSize =
-                (densePos[dim_] + rawSize >= denseShape_[dim_]) ? denseShape_[dim_] - 1 - densePos[dim_] : rawSize;
+                (densePos[dim_] + rawSize >= denseShape_[dim_]) ? denseShape_[dim_] - densePos[dim_] : rawSize;
             toV = from + validSize;
         }
         result[0] = from;

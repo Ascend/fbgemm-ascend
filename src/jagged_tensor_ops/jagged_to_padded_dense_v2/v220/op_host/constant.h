@@ -25,7 +25,7 @@ constexpr int DATA_TYPE_FLOAT32 = 4;
 constexpr int NUM_QUEUE = 4;
 
 constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
-constexpr int MAX_D = 2048;
+constexpr int MAX_D = 8192;
 constexpr int MIN_OFFSETS_CNT = 1;
 constexpr int MAX_OFFSETS_CNT = 5;
 
