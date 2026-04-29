@@ -135,7 +135,7 @@ public:
             coreProcOffset = coreIdx * splitPrevCoreProcTask;
         } else if (coreIdx < actualCoreNum) {
             coreProcSize = splitNextCoreProcTask;
-            coreProcOffset = coreIdx * splitPrevCoreProcTask + (coreIdx - splitCoreIdx) * splitNextCoreProcTask;
+            coreProcOffset = splitCoreIdx * splitPrevCoreProcTask + (coreIdx - splitCoreIdx) * splitNextCoreProcTask;
         } else {
             coreProcSize = 0;
             coreProcOffset = 0;
@@ -160,7 +160,7 @@ public:
         CoreSplitPolicy(coreTaskNum, coreProcSize, coreProcOffset);
 
         uint32_t maxIndicesBatchSize = AlignDown(static_cast<uint32_t>(INDICES_UB_BYTE_SIZE / sizeof(uint32_t)), BASIC_BLOCK);
-        uint32_t gatherDataBatchSize = AlignDown(static_cast<uint32_t>(GATHER_DATA_UB_BYTE_SIZE / sizeof(inputType) * groupInnerDim), BASIC_BLOCK);
+        uint32_t gatherDataBatchSize = AlignDown(static_cast<uint32_t>(GATHER_DATA_UB_BYTE_SIZE / (sizeof(inputType) * groupInnerDim)), BASIC_BLOCK);
         uint32_t batchSize = MinValue(gatherDataBatchSize, maxIndicesBatchSize, coreProcSize);
 
         runArgs.batchSize = batchSize;
