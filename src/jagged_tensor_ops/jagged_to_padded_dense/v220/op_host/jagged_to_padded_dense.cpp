@@ -27,7 +27,8 @@ constexpr int DATA_TYPE_INT32 = 4;
 constexpr int DATA_TYPE_FLOAT32 = 4;
 constexpr int NUM_QUEUE = 4;
 constexpr int UB_ALIGN = 32;
-constexpr int SUPPORT_EMBEDDING_DIM_NUM = 2;
+constexpr int SUPPORT_EMBEDDING_DIM_NUM_1D = 1;
+constexpr int SUPPORT_EMBEDDING_DIM_NUM_2D = 2;
 constexpr size_t MAX_LENGTH_ATTR_IDX = 0;
 constexpr size_t PADDING_VALUE_FP32_ATTR_IDX = 1;
 constexpr size_t PADDING_VALUE_INT64_ATTR_IDX = 2;
@@ -65,8 +66,13 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     ubCanUsed = ubCanUsed / UB_ALIGN / NUM_QUEUE * UB_ALIGN * NUM_QUEUE;
     tiling.set_ubCanUsed(ubCanUsed);
 
-    if (valuesShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM or offsetsShape.GetDimNum() != 1) {
-        printf("[ERROR]jagged_to_padded_dense_tiling is only used for values with rank-2 and offset rank-1");
+    // Support values rank-1 (jagged_1d_to_dense) or rank-2 (jagged_to_padded_dense), offsets must be rank-1
+    int valuesRank = valuesShape.GetDimNum();
+    if ((valuesRank != SUPPORT_EMBEDDING_DIM_NUM_2D && valuesRank != SUPPORT_EMBEDDING_DIM_NUM_1D) ||
+        offsetsShape.GetDimNum() != 1) {
+        OPS_LOG_E("jagged_to_padded_dense",
+            "values must be rank-1 or rank-2, offsets must be rank-1,valuesRank(%d), offsetsRank(%d)",
+            valuesRank, offsetsShape.GetDimNum());
         return ge::GRAPH_FAILED;
     }
 
@@ -94,7 +100,8 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     tiling.set_tailSplitIndex(tailSplitIndex);
     int64_t valuesDim0 = valuesShape.GetDim(0);
     tiling.set_valuesDim0(valuesDim0);
-    int64_t valuesDim1 = valuesShape.GetDim(1);
+    // For 1D values (jagged_1d_to_dense): treat as [total_L, 1]; for 2D: [total_L, D]
+    int64_t valuesDim1 = (valuesRank == SUPPORT_EMBEDDING_DIM_NUM_1D) ? 1 : valuesShape.GetDim(1);
     tiling.set_valuesDim1(valuesDim1);
     int64_t offsetDim0 = offsetsShape.GetDim(0);
     tiling.set_offsetDim0(offsetDim0);
@@ -131,12 +138,24 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     OPS_LOG_E_IF_NULL("offsetsShape", offsetsShape, return ge::GRAPH_FAILED);
     OPS_LOG_E_IF_NULL("outShape", outShape, return ge::GRAPH_FAILED);
 
-    int dimSize = 3;
-    int dimIndex2 = 2;
-    outShape->SetDimNum(dimSize);
-    outShape->SetDim(0, offsetsShape->GetDim(0) - 1);
-    outShape->SetDim(1, maxLen);
-    outShape->SetDim(dimIndex2, valuesShape->GetDim(1));
+    int64_t batchSize = offsetsShape->GetDim(0) - 1;
+ 	int valuesRank = valuesShape->GetDimNum();
+ 	 
+    // jagged_1d_to_dense: values 1D [total_L] -> out 2D [B, maxLen]
+    // jagged_to_padded_dense: values 2D [total_L, D] -> out 3D [B, maxLen, D]
+    if (valuesRank == optiling::SUPPORT_EMBEDDING_DIM_NUM_1D) {
+        int dimSize = 2;
+        outShape->SetDimNum(dimSize);
+        outShape->SetDim(0, batchSize);
+        outShape->SetDim(1, maxLen);
+    } else {
+        int dimSize = 3;
+        int dimIndex2 = 2;
+        outShape->SetDimNum(dimSize);
+        outShape->SetDim(0, batchSize);
+        outShape->SetDim(1, maxLen);
+        outShape->SetDim(dimIndex2, valuesShape->GetDim(1));
+ 	}
 
     return GRAPH_SUCCESS;
 }

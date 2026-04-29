@@ -29,7 +29,8 @@ at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values,
                                           const int64_t max_lengths,
                                           const double padding_value)
 {
-    check_tensor_dim(values, EXPECTED_DIM_2D, "values");
+    // Support 1D (jagged_to_1d_dense) or 2D (jagged_to_padded_dense) values, aligned with FBGEMM
+    check_tensor_dim(values, {EXPECTED_DIM_1D, EXPECTED_DIM_2D}, "values");
 
     check_tensor_non_empty(offsets, "offsets");
     check_tensor_dim(offsets, EXPECTED_DIM_1D, "offsets");
@@ -42,8 +43,15 @@ at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values,
     TORCH_CHECK(max_lengths >= 0, "max_lengths must be non-negative, but got ", max_lengths);
 
     auto B = offsets.size(0) - 1;
-    auto D = values.size(-1);
-    auto output = at::empty({B, max_lengths, D}, values.options());
+    at::Tensor output;
+    if (values.dim() == EXPECTED_DIM_1D) {
+        // jagged_to_1d_dense: values [total_L] -> out [B, max_lengths]
+        output = at::empty({B, max_lengths}, values.options());
+    } else {
+        // jagged_to_padded_dense: values [total_L, D] -> out [B, max_lengths, D]
+        auto D = values.size(-1);
+        output = at::empty({B, max_lengths, D}, values.options());
+    }
 
     if (max_lengths == 0) {
         return output;
@@ -102,8 +110,15 @@ at::Tensor dense_to_jagged_impl(const at::Tensor& dense,
     check_tensor_npu_device(tensors, names);
 
     const at::OptionalDeviceGuard guard(device_of(dense));
-    auto D = dense.size(-1);
-    auto dense_contin = dense.contiguous();
+
+    // 2D [B, max_len]：1D jagged backward，内部当作 [B, max_len, 1] 处理，输出再 squeeze 为 [total_L]
+    // 3D [B, max_len, D]：2D jagged backward，输出 [total_L, D]
+    at::Tensor dense_contin = dense.contiguous();
+    auto D = dense_contin.size(-1);
+    bool output_1d = (dense.dim() == EXPECTED_DIM_2D);
+    if (output_1d) {
+        dense_contin = dense_contin.unsqueeze(-1);
+    }
 
     int64_t totalLComputed;
     if (total_L.has_value()) {
@@ -114,5 +129,8 @@ at::Tensor dense_to_jagged_impl(const at::Tensor& dense,
 
     auto output = at::empty({totalLComputed, D}, dense.options());
     EXEC_NPU_CMD(aclnnDenseToJagged, dense_contin, offsets, totalLComputed, output);
+    if (output_1d) {
+        return output.squeeze(-1);
+    }
     return output;
 }

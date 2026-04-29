@@ -47,6 +47,30 @@ inline void check_tensor_dim(const at::Tensor& tensor, int64_t expectedDim, cons
 }
 
 /**
+ * 检查张量维度是否符合预期（验证多个维度）
+ * @param tensor 要检查的张量
+ * @param allowed_dims 允许的维度列表
+ * @param name 张量名称
+ */
+inline void check_tensor_dim(const at::Tensor& tensor,
+                            const std::vector<int64_t>& allowed_dims,
+                            const std::string& name)
+{
+    auto actual_dim = tensor.dim();
+    bool is_allowed = std::find(allowed_dims.begin(), allowed_dims.end(), actual_dim) 
+                      != allowed_dims.end();
+
+    std::string allowed_str;
+    for (size_t i = 0; i < allowed_dims.size(); ++i) {
+        if (i > 0) allowed_str += (i == allowed_dims.size() - 1) ? " or " : ", ";
+        allowed_str += std::to_string(allowed_dims[i]) + "D";
+    }
+
+    TORCH_CHECK(is_allowed, name, " must be ", allowed_str, 
+                ", got ", actual_dim, "D");
+}
+
+/**
  * 检查张量设备是否为NPU且设备ID一致
  * @param tensors 张量列表
  * @param names 张量名称列表(用于错误信息)
