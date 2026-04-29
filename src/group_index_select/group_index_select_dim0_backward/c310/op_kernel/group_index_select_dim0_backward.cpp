@@ -24,6 +24,11 @@ extern "C" __global__ __aicore__ void group_index_select_dim0_backward(
     GET_TILING_DATA(tilingData, tiling);
     GroupIndexSelectDim0Backward::Args args{gradOutputs, indicesGroups, inputReturnGroups, workspace, tiling};
 
-    GroupIndexSelectDim0Backward::GroupIndexSelectDim0BackwardKernel<DTYPE_GRADOUTPUTS> kernel(args);
-    kernel.Compute();
+    if (TILING_KEY_IS(0)) {
+        GroupIndexSelectDim0Backward::GroupIndexSelectDim0BackwardKernel<float> kernel(args);
+        kernel.Compute();
+    } else if (TILING_KEY_IS(1)) {
+        GroupIndexSelectDim0Backward::GroupIndexSelectDim0BackwardKernel<half> kernel(args);
+        kernel.Compute();
+    }
 }

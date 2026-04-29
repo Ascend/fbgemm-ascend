@@ -24,6 +24,11 @@ extern "C" __global__ __aicore__ void group_index_select_dim0(
     GET_TILING_DATA(tilingData, tiling);
     GroupIndexSelectDim0::Args args{inputGroups, indicesGroups, outputGroups, workspace, tiling};
 
-    GroupIndexSelectDim0::GroupIndexSelectDim0Kernel<DTYPE_INPUTGROUPS> kernel(args);
-    kernel.Compute();
+    if (TILING_KEY_IS(0)) {
+        GroupIndexSelectDim0::GroupIndexSelectDim0Kernel<float> kernel(args);
+        kernel.Compute();
+    } else if (TILING_KEY_IS(1)) {
+        GroupIndexSelectDim0::GroupIndexSelectDim0Kernel<half> kernel(args);
+        kernel.Compute();
+    }
 }
