@@ -1,24 +1,33 @@
-**说明**
+# backward_codegen_adagrad_unweighted_exact
 
-本算子仅支持NPU调用。
+本算子仅支持 NPU 调用，用于 Table Batched Embedding training 场景下 embedding backward 梯度聚合与参数更新。
 
-# 产品支持情况
-| 硬件型号           | 是否支持                  |
-|----------------| ------------------------ |
-| Atlas A5训练系列产品 | 是  |
+## 目录结构
 
-# backward_codegen_adagrad_unweighted_exact算子目录层级
-```shell
--- backward_codegen_adagrad_unweighted_exact
-   |-- c310
-      |-- op_host                                            # 算子host侧实现
-      |-- op_kernel                                          # 算子kernel侧实现
-      |-- backward_codegen_adagrad_unweighted_exact.json     # 算子原型配置
-      |-- README.md                                          # 算子说明文档
-      |-- run.sh                                             # 算子编译部署脚本
+```text
+backward_codegen_adagrad_unweighted_exact
+|-- README.md
+|-- c310/
+|   |-- backward_codegen_adagrad_unweighted_exact.json
+|   |-- op_host/
+|   |-- op_kernel/
+|   `-- run.sh
+`-- v220/
+    |-- backward_codegen_adagrad_unweighted_exact.json
+    |-- op_host/
+    |-- op_kernel/
+    `-- run.sh
 ```
 
-# 算子输入与输出
+## 产品支持情况
+
+| 实现目录 | 典型硬件 |
+| --- | --- |
+| `c310/` | Atlas A5 训练系列 |
+| `v220/` | Atlas A2 / A3 训练系列 |
+
+## 算子输入与输出
+
 | 名称                          |  输入/输出  | 数据类型    |  数据格式  | 范围                       | 说明                                                |
 |-----------------------------|  ---- |---------|  ----  |--------------------------|---------------------------------------------------|
 | grad_output                 | 输入 | float32 | poolingSum/poolingMean: [batch_size, total_D] poolingNone:[len(indices), maxD] | NA                       | 查询向量的反向的梯度                                        |
@@ -67,8 +76,9 @@
 | momentum2_dev_out           | 输出 | float32 | [total_table_size] | NA                       | 更新后的二阶动量                                          |
 | weights_dev_out             | 输出 | float32 | [total_table_size] | NA                       | 更新后的表的权重                                          |
 
-# 算子实现原理
-## backward_codegen_adagrad_unweighted_exact实现原理
+## 算子实现原理
+
+### backward_codegen_adagrad_unweighted_exact实现原理
 
 ```python3
 import numpy as np
@@ -131,7 +141,7 @@ def backward_codegen_adagrad_unweighted_exact(grad_output, dev_weights, weights_
 
 ```
 
-## backward_codegen_adam_unweighted_exact实现原理
+### backward_codegen_adam_unweighted_exact实现原理
 
 ```python3
 
@@ -212,7 +222,7 @@ def backward_codegen_adam_unweighted_exact(grad_output,
 
 ```
 
-##  backward_codegen_sgd_unweighted_exact实现原理
+###  backward_codegen_sgd_unweighted_exact实现原理
 
 ```python3
 import numpy as np
@@ -279,8 +289,8 @@ def backward_codegen_sgd_unweighted_exact(grad_output,
 
 ```
 
-# 算子编译部署
+## 编译与部署
 
-算子编译请参考[RecSDK\cust_op\README.md](../../../../README.md)中"单算子使用说明"-"算子编译"章节。
+算子编译请参考仓库根目录 [README.md](../../../README.md) 中“单算子使用说明”的算子编译章节。
 
-注：详细算子调用示例参考Pytorch框架下[README.md](../../../../framework/torch_plugin/torch_library/split_embedding_codegen_forward_unweighted/README.md)
+调用参考 [src/tbe_training/split_embedding_codegen_forward_unweighted/README.md](../split_embedding_codegen_forward_unweighted/README.md)。
