@@ -30,6 +30,6 @@ extern "C" __global__ __aicore__ void pruned_hashmap_lookup(
         dense_indices, workspace, tiling
     };
 
-    PrunedHashmapLookup::PrunedHashmapLookupKernel<DTYPE_INDICES> kernel(args);
+    PrunedHashmapLookup::PrunedHashmapLookupKernel<DTYPE_INDICES, DTYPE_HASH_TABLE> kernel(args);
     kernel.Compute(args);
 }

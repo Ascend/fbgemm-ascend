@@ -42,6 +42,12 @@ PRUNING_RATIO = 0.5
 TABLE_NUM_LIST = [1, 13, 31, 60, 73, 100]
 BATCH_NUM_LIST = [1, 14, 73, 234, 1000]
 LENGTH_LIST = [20, 55, 664]
+PARAM_TYPES = [
+    [torch.int32, torch.int32, torch.int64],
+    [torch.int32, torch.int64, torch.int64],
+    [torch.int64, torch.int32, torch.int64],
+    [torch.int64, torch.int64, torch.int64],
+]
 
 def _assume(flag, msg: str = "Assumption failed"):
     if not flag:
@@ -66,7 +72,7 @@ def _set_seed(seed: int = 32):
 @pytest.mark.parametrize("table_num", TABLE_NUM_LIST)
 @pytest.mark.parametrize("batch_num", BATCH_NUM_LIST)
 @pytest.mark.parametrize("length", LENGTH_LIST)
-@pytest.mark.parametrize("param_types", [[torch.int32, torch.int64], [torch.int64, torch.int64]])
+@pytest.mark.parametrize("param_types", PARAM_TYPES)
 def test_pruned_hashmap_lookup(
     table_num: int,
     batch_num: int,
@@ -76,7 +82,7 @@ def test_pruned_hashmap_lookup(
     _set_seed()
     logging.info(f"table_num:{table_num}, batch_num:{batch_num}, length:{length}, param_types:{param_types}")
     current_device = _get_device()
-    indices_type, hash_table_offsets_type = param_types
+    indices_type, hash_table_type, hash_table_offsets_type = param_types
     is_valid_type = indices_type in [torch.int32, torch.int64] and hash_table_offsets_type in [torch.int64]
 
     # 稀疏索引的值的范围
@@ -115,7 +121,7 @@ def test_pruned_hashmap_lookup(
     hash_table = torch.full(
         (sum(capacities), 2),
         -1,  # 填充-1
-        dtype=indices_type,
+        dtype=hash_table_type,
     )
     hash_table_offsets = torch.tensor([0] + np.cumsum(capacities).tolist()).to(dtype=hash_table_offsets_type)
 
@@ -141,10 +147,10 @@ def test_pruned_hashmap_lookup(
 @pytest.mark.parametrize(
     "param_types",
     [
-        [torch.int32, torch.int32],
-        [torch.int64, torch.int32],
-        [torch.int64, torch.float],
-        [torch.float, torch.float],
+        [torch.int32, torch.int32, torch.int32],
+        [torch.int64, torch.int32, torch.int32],
+        [torch.int64, torch.int32, torch.float],
+        [torch.float, torch.int32, torch.float],
     ],
 )
 def test_invalid_dtype_param(
@@ -176,7 +182,7 @@ def test_different_batch_length(has_empty_hash_table: bool = False):
     for i in indices_num_per_table:
         dense_idx_range = int(i / (1.0 - PRUNING_RATIO + 0.2))
         sub_indices = torch.randint(low=0, high=dense_idx_range, size=(i,)).view(-1).to(dtype=torch.int32)
-        dense_indices_list.append(torch.tensor(sub_indices, dtype=torch.int32))
+        dense_indices_list.append(sub_indices)
     dense_indices = torch.cat(dense_indices_list, dim=0)
 
     capacities = [int(t_s / LOAD_FACTOR) + 1 for t_s in indices_num_per_table]

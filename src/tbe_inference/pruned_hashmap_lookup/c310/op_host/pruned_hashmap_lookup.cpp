@@ -77,7 +77,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     auto hashTableType = context->GetInputDesc(HASH_TABLE_INDEX)->GetDataType();
 
     // 检查数据类型
-    OPS_CHECK(indicesType != offsetsType || indicesType != hashTableType,
+    OPS_CHECK(indicesType != offsetsType,
               OPS_LOG_E("Tiling Debug",
                         "The datatype of indices, offsets and hash_table must be the same."),
               return ge::GRAPH_FAILED);
@@ -201,7 +201,7 @@ public:
     {
         this->Input("indices")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32, ge::DT_INT64})
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("offsets")
             .ParamType(REQUIRED)
@@ -209,7 +209,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Input("hash_table")
             .ParamType(REQUIRED)
-            .Follow("indices", FollowType::DTYPE)
+            .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
         this->Input("hash_table_offsets")
             .ParamType(REQUIRED)
