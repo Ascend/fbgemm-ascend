@@ -1,29 +1,49 @@
-**说明**
+# get_unique_indices
 
-本算子仅支持NPU调用。
+仅支持 NPU 调用，用于对线性索引排序去重，并按需返回计数与逆映射信息。
 
-# 产品支持情况
-| 硬件型号              | 是否支持 |
-| -------------------- | ------ |
-| Atlas A5训练系列产品  | 是      |
-| Atlas A2训练系列产品  | 否      |
-| Atlas A3训练系列产品  | 否      |
-| Atlas 推理系列产品    | 否      |
+## 目录结构
 
-# get_unique_indices算子目录层级
-
-```shell
+```text
 get_unique_indices
-|-- get_unique_indices.cpp        # PyTorch适配层实现（aclnnSort + aclnnRunLengthEncode）
-|-- c310
-    |-- op_host                   # 算子host侧实现
-    |-- op_kernel                 # 算子kernel侧实现
-    |-- run_length_encode.json    # 算子原型配置
-    |-- README.md                 # 算子说明文档
-    |-- run.sh                    # 算子编译部署脚本
+|-- get_unique_indices.cpp
+|-- README.md
+`-- c310/
+    |-- run_length_encode.json
+    |-- op_host/
+    |-- op_kernel/
+    `-- run.sh
 ```
 
-# 功能
+## 硬件支持
+
+| 实现目录 | 典型硬件 |
+| --- | --- |
+| `c310/` | Atlas A5 训练系列 |
+
+## PyTorch 接口原型
+
+```python
+torch.ops.fbgemm.get_unique_indices(
+    Tensor linear_indices,
+    int max_indices,
+    bool compute_count
+) -> (Tensor unique_indices, Tensor unique_indices_length, Tensor? unique_indices_count)
+
+torch.ops.fbgemm.get_unique_indices_with_inverse(
+    Tensor linear_indices,
+    int max_indices,
+    bool compute_count,
+    bool compute_inverse_indices
+) -> (
+    Tensor unique_indices,
+    Tensor unique_indices_length,
+    Tensor? unique_indices_count,
+    Tensor? inverse_indices
+)
+```
+
+## 功能说明
 
 `get_unique_indices(_with_inverse)` 用于对大量重复索引排序去重，可选返回每个唯一值出现次数以及稳定排序后的原始位置映射，减少后续 embedding 查询与聚合的重复计算。
 
@@ -36,7 +56,8 @@ get_unique_indices
 `get_unique_indices` 主要流程为：
 1. 调用 `aclnnSort` 对 `linear_indices` 做基数排序
 2. 调用 `aclnnRunLengthEncode` 对 `sorted_indices` 做游程编码
-# 算子实现原理
+
+## 算子实现原理
 
 输入：
 
@@ -59,7 +80,8 @@ unique_indices_length = [4]
 - `unique_indices_count` shape 为 `[0]`
 - `inverse_indices` shape 为 `[0]`
 
-# 算子输入与输出
+## 参数与返回
+
 `run_length_encode`（Ascend C算子）：
 
 | 名称 | 输入/输出 | 数据类型 | 数据格式 | 范围 | 说明 |
@@ -100,6 +122,28 @@ unique_indices_length = [4]
 - 输入 `linear_indices` 中的每个元素必须满足 `0 <= linear_indices[i] < max_indices`。
 - Host 侧硬约束 `len(linear_indices) <= INT32_MAX`，超限在 tiling 阶段报错。
 
-# 算子编译部署
+## 调用示例
 
-注：算子调用与精度校验可参考[bench/split_embeddings_cache/get_unique_indices_test/test_get_unique_indices.py](../../../../bench/split_embeddings_cache/get_unique_indices_test/test_get_unique_indices.py)。
+```python
+import sysconfig
+import torch
+import torch_npu
+import fbgemm_ascend
+
+linear_indices = torch.tensor([3, 1, 3, 6, 1, 8], dtype=torch.int64, device="npu")
+
+unique_indices, unique_len, unique_count = torch.ops.fbgemm.get_unique_indices(
+    linear_indices, 16, True
+)
+
+unique_indices2, unique_len2, unique_count2, inverse = (
+    torch.ops.fbgemm.get_unique_indices_with_inverse(
+        linear_indices, 16, True, True
+    )
+)
+```
+
+## 编译与测试
+
+- Ascend C 算子编译与适配层编译参考仓库根目录 [README.md](../../../README.md)。
+- 测试示例参考 [bench/split_embeddings_cache/get_unique_indices_test/test_get_unique_indices.py](../../../bench/split_embeddings_cache/get_unique_indices_test/test_get_unique_indices.py)。
