@@ -50,11 +50,11 @@ __simt_callee__ inline uint64_t PrunedHashFunction(uint64_t k)
     return k;
 }
 
-template <typename DataType>
+template <typename DataType, typename HashTableType>
 __simt_vf__ __launch_bounds__(SIMT_LAUNCH_BOUND)
     inline void PrunedHashmapLookupSimt(
         __gm__ DataType* indices,
-        __gm__ DataType* hashTable,
+        __gm__ HashTableType* hashTable,
         __gm__ DataType* denseIndices,
         DataType batchIndexStart,
         DataType segmentLength,
@@ -84,8 +84,8 @@ __simt_vf__ __launch_bounds__(SIMT_LAUNCH_BOUND)
             const auto slot = (slotStart + laneId) % capacity;  // 计算当前线程要探测的槽位
 
             // 获取hash table中对应槽位的值
-            DataType slotSparseIdx = hashTable[(hashTableStart + static_cast<int64_t>(slot)) * TABLE_DIM];
-            DataType slotDenseIdx = hashTable[(hashTableStart + static_cast<int64_t>(slot)) * TABLE_DIM + 1];
+            HashTableType slotSparseIdx = hashTable[(hashTableStart + static_cast<int64_t>(slot)) * TABLE_DIM];
+            HashTableType slotDenseIdx = hashTable[(hashTableStart + static_cast<int64_t>(slot)) * TABLE_DIM + 1];
 
             int32_t found = 0;
             int32_t empty = 0;
@@ -108,7 +108,7 @@ __simt_vf__ __launch_bounds__(SIMT_LAUNCH_BOUND)
     }
 }
 
-template <typename T>
+template <typename INDICES_T, typename HASH_TABLE_T>
 class PrunedHashmapLookupKernel {
 public:
     __aicore__ inline PrunedHashmapLookupKernel(Args& args)
@@ -140,12 +140,12 @@ private:
 
     __aicore__ inline void InitGmParams(const Args& args)
     {
-        indicesGT.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(args.indices), indicesLen);
-        offsetsGT.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(args.offsets), offsetsLen);
-        hashTableGT.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(args.hashTable), hashTableLen);
+        indicesGT.SetGlobalBuffer(reinterpret_cast<__gm__ INDICES_T*>(args.indices), indicesLen);
+        offsetsGT.SetGlobalBuffer(reinterpret_cast<__gm__ INDICES_T*>(args.offsets), offsetsLen);
+        hashTableGT.SetGlobalBuffer(reinterpret_cast<__gm__ HASH_TABLE_T*>(args.hashTable), hashTableLen);
         hashTableOffsetsGT.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(args.hashTableOffsets),
                                            hashTableOffsetsLen);
-        denseIndicesGT.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(args.denseIndices), indicesLen);
+        denseIndicesGT.SetGlobalBuffer(reinterpret_cast<__gm__ INDICES_T*>(args.denseIndices), indicesLen);
     }
 
     __aicore__ inline void ProcessAllBatch(Args& args)
@@ -174,14 +174,14 @@ private:
         Args& args,
         int64_t batchIdx)
     {
-        T batchIndexStart = static_cast<T>(offsetsGT.GetValue(batchIdx));
-        T batchIndexEnd = static_cast<T>(offsetsGT.GetValue(batchIdx + 1));
-        T segmentLength = batchIndexEnd - batchIndexStart;
+        INDICES_T batchIndexStart = static_cast<INDICES_T>(offsetsGT.GetValue(batchIdx));
+        INDICES_T batchIndexEnd = static_cast<INDICES_T>(offsetsGT.GetValue(batchIdx + 1));
+        INDICES_T segmentLength = batchIndexEnd - batchIndexStart;
         if (segmentLength <= 0) {
             return;
         }
 
-        T tableIndex = batchIdx / batchPerTable;
+        INDICES_T tableIndex = batchIdx / batchPerTable;
         int64_t hashTableStart = hashTableOffsetsGT.GetValue(tableIndex);
         int64_t hashTableEnd = hashTableOffsetsGT.GetValue(tableIndex + 1);
 
@@ -190,16 +190,16 @@ private:
 
     __aicore__ inline void ProcessSimt(
         Args& args,
-        T batchIndexStart,
-        T segmentLength,
+        INDICES_T batchIndexStart,
+        INDICES_T segmentLength,
         int64_t hashTableStart,
         int64_t hashTableEnd)
     {
-        __gm__ T* indices = reinterpret_cast<__gm__ T*>(args.indices);
-        __gm__ T* hashTable = reinterpret_cast<__gm__ T*>(args.hashTable);
-        __gm__ T* denseIndices = reinterpret_cast<__gm__ T*>(args.denseIndices);
+        __gm__ INDICES_T* indices = reinterpret_cast<__gm__ INDICES_T*>(args.indices);
+        __gm__ HASH_TABLE_T* hashTable = reinterpret_cast<__gm__ HASH_TABLE_T*>(args.hashTable);
+        __gm__ INDICES_T* denseIndices = reinterpret_cast<__gm__ INDICES_T*>(args.denseIndices);
 
-        asc_vf_call<PrunedHashmapLookupSimt<T>>(
+        asc_vf_call<PrunedHashmapLookupSimt<INDICES_T, HASH_TABLE_T>>(
             dim3{static_cast<uint32_t>(BLOCK_DIM_0), 1, 1},
             indices,
             hashTable,
@@ -213,11 +213,11 @@ private:
 private:
     TPipe pipe;
 
-    GlobalTensor<T> indicesGT;
-    GlobalTensor<T> offsetsGT;
-    GlobalTensor<T> hashTableGT;
+    GlobalTensor<INDICES_T> indicesGT;
+    GlobalTensor<INDICES_T> offsetsGT;
+    GlobalTensor<HASH_TABLE_T> hashTableGT;
     GlobalTensor<int64_t> hashTableOffsetsGT;
-    GlobalTensor<T> denseIndicesGT;  // 输出tensor
+    GlobalTensor<INDICES_T> denseIndicesGT;  // 输出tensor
 
     int64_t batchNum;
     int64_t batchPerTable;

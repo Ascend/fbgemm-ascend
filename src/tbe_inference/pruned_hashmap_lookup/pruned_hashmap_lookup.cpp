@@ -33,6 +33,10 @@ bool is_target_dtype(const at::Tensor& tensor, at::ScalarType targetDtype) {
 Tensor npu_pruned_hashmap_lookup_impl(at::Tensor indices, at::Tensor offsets,
                                       at::Tensor hash_table, at::Tensor hash_table_offsets)
 {
+    if (indices.numel() == 0) {
+        return at::zeros_like(indices);
+    }
+
     check_tensor_dim(indices, INDICES_DIM, "pruned_hashmap_lookup indices");
     check_tensor_dim(offsets, OFFSETS_DIM, "pruned_hashmap_lookup offsets");
     check_tensor_dim(hash_table, HASH_TABLE_DIM, "pruned_hashmap_lookup hash_table");
@@ -45,7 +49,8 @@ Tensor npu_pruned_hashmap_lookup_impl(at::Tensor indices, at::Tensor offsets,
     TORCH_CHECK(is_target_dtype(indices, at::kInt) || is_target_dtype(indices, at::kLong),
                 "indices tensor dtype must be int32 or int64");
     TORCH_CHECK(is_target_dtype(indices, offsets.scalar_type()), "indices and offsets dtype must be same");
-    TORCH_CHECK(is_target_dtype(indices, hash_table.scalar_type()), "indices and hash_table dtype must be same");
+    TORCH_CHECK(is_target_dtype(hash_table, at::kInt) || is_target_dtype(hash_table, at::kLong),
+                "hash_table tensor dtype must be int32 or int64");
     TORCH_CHECK(is_target_dtype(hash_table_offsets, at::kLong), "hash_table_offsets dtype must be int64");
 
     auto batch_count = offsets.numel() - 1;
