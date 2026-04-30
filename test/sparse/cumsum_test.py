@@ -124,10 +124,6 @@ class CumSumTest(unittest.TestCase):
         if _is_npu(device) and pt_index_dtype is torch.float32:
             return
 
-        # NPU impl currently only supports 1D input;
-        if _is_npu(device):
-            return
-
         x = torch.randint(low=0, high=100, size=(b, n)).type(pt_index_dtype).to(device)
 
         zc = torch.ops.fbgemm.asynchronous_complete_cumsum(x)
