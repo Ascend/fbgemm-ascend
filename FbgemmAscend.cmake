@@ -15,6 +15,7 @@ set(ASCENDC_A5_ONLY_OPS
     lru_cache_insert_byte
     group_index_select_dim0
     group_index_select_dim0_backward
+    float_to_bfloat16_quantized
 )
 
 set(ASCENDC_A3_OPS
@@ -125,6 +126,7 @@ set(_ASCENDC_OPS
     "lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_insert_byte"
     "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
     "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
+    "float_to_bfloat16_quantized|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_to_bfloat16_quantized"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
@@ -204,4 +206,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
     src/sparse_ops/group_index_select_dim0/group_index_select_dim0.cpp
+    src/quantize_ops/float_to_bfloat16_quantized/float_to_bfloat16_quantized.cpp
 )

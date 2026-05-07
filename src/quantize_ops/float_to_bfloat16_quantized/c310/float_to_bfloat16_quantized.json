@@ -1,0 +1,30 @@
+[
+  {
+    "op": "FloatToBfloat16Quantized",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "input",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "output",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "bf16"
+        ]
+      }
+    ]
+  }
+]
