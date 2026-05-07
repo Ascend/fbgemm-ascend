@@ -28,3 +28,10 @@ def bfloat_quantize(x_float: float) -> np.uint16:
     bits += 1 << 15
     bits = bits >> 16
     return np.uint16(bits)
+
+
+def bfloat_dequantize(x_bfloat: np.uint16) -> float:
+    """Numpy reference implementation of bfloat16 dequantization."""
+    import struct
+    bits = np.int32(x_bfloat) << 16
+    return struct.unpack('>f', struct.pack('>I', bits))[0]

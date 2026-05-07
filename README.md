@@ -61,7 +61,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/sparse_ops/group_index_select_dim0 | [c310](src/sparse_ops/group_index_select_dim0/c310/README.md)                                                                                                      |
 | src/sparse_ops/group_index_select_dim0_backward | [c310](src/sparse_ops/group_index_select_dim0_backward/c310/README.md)                                                                                             |
 | src/quantize_ops/float_to_bfloat16_quantized                                                            | [c310](src/quantize_ops/float_to_bfloat16_quantized/README.md)                                                                                                                                                                        |
-
+| src/quantize_ops/bfloat16_quantized_to_float | [c310](src/quantize_ops/bfloat16_quantized_to_float/README.md)                                                                                                        |
 
 更多算子可在对应目录的 README.md 中查看具体接口、输入输出张量格式及样例代码。
 
