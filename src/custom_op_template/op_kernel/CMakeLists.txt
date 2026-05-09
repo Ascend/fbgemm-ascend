@@ -10,6 +10,7 @@
 
 npu_op_kernel_options(ascendc_kernels ALL
     OPTIONS "--cce-long-call=true"
+            "-DNDEBUG"
 )
 
 if (ENABLE_CATLASS AND CATLASS_HOME)
