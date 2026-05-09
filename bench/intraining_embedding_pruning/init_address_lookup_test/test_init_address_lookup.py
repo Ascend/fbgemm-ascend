@@ -15,9 +15,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from pathlib import Path
-import sysconfig
-
 import numpy as np
 import pytest
 import torch
@@ -88,7 +85,7 @@ def init_address_lookup_npu(
     torch.npu.synchronize()
     for _ in range(REPEAT_TIMES):
         address_lookup_tensor = torch.empty(total_rows, dtype=emb_dtype, device=device)
-        torch.ops.mxrec.init_address_lookup(
+        torch.ops.fbgemm.init_address_lookup(
             address_lookup_tensor, buffer_offsets_tensor, emb_sizes_tensor
         )
         torch.npu.synchronize()
