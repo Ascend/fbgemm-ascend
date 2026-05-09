@@ -27,12 +27,12 @@ using namespace at;
 at::Tensor segment_sum_csr_impl_npu(int64_t batch_size, const at::Tensor& csr_seg, const at::Tensor& values)
 {
     check_tensor_non_empty(csr_seg, "csr_seg");
-    check_tensor_non_empty(values, "values");
     check_tensor_dim(csr_seg, 1, "segment_sum_csr csr_seg");
     check_tensor_dim(values, 1, "segment_sum_csr values");
-    TORCH_CHECK(batch_size != 0, "batch_size is 0");
-    TORCH_CHECK(values.size(0) % batch_size == 0, "param values dim 0: ", values.size(0),
-                " is not multiple of batch_size: ", batch_size);
+    if (batch_size != 0) {
+        TORCH_CHECK(values.size(0) % batch_size == 0, "param values dim 0: ", values.size(0),
+                    " is not multiple of batch_size: ", batch_size);
+    }
     auto csr_seg_conti = csr_seg.contiguous();
     auto values_conti = values.contiguous();
     at::Tensor y = at::empty({csr_seg_conti.size(0) - 1}, values_conti.options());
@@ -55,7 +55,7 @@ public:
 // 在npu命名空间里注册segment_sum_csr的schema
 TORCH_LIBRARY_FRAGMENT(mxrec, m)
 {
-    m.def("segment_sum_csr(int batch_size, Tensor csr_seg, Tensor values) -> Tensor");
+    m.def("segment_sum_csr(SymInt batch_size, Tensor csr_seg, Tensor values) -> Tensor");
 }
 
 // NPU设备在pytorch 2.1及以上版本使用的设备名称是PrivateUse1，在2.1以下版本用的是XLA，如果是2.1以下版本PrivateUse1需要改成XLA

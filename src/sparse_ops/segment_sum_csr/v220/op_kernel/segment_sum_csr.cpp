@@ -49,6 +49,11 @@ public:
                                             (blockIdx - tilingData.remainedSegments) * tilingData.baseCoreSegments
                                           : blockIdx * tilingData.formerCoreSegments;
 
+        if (tilingData.segmentNums == 0) {
+            this->currentCoreSegments = 0;
+            return;
+        }
+
         csrSegGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ csrType*>(args.csrSeg), tilingData.csrSegLength);
         valuesGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ vType*>(args.values), tilingData.totalLength);
         yGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ vType*>(args.y), tilingData.segmentNums);
