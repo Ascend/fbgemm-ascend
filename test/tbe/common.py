@@ -30,6 +30,7 @@ import numpy as np
 import torch
 import torch_npu
 import hypothesis.strategies as st
+import fbgemm_ascend
 import fbgemm_gpu
 from fbgemm_gpu import split_table_batched_embeddings_ops_common
 from fbgemm_gpu import split_table_batched_embeddings_ops_training
