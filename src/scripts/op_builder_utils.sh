@@ -168,34 +168,6 @@ check_system_and_cann() {
         return 1
     fi
 
-    # 查看cann版本
-    local toolkit_path=$ASCEND_TOOLKIT_HOME
-    if [ ! -d "$toolkit_path" ]; then
-        echo "ERROR: cann not found at $toolkit_path" >&2
-        return 1
-    fi
-
-    local info_file="${toolkit_path}/${ARCH}-linux/ascend_toolkit_install.info"
-    if [ ! -f "$info_file" ]; then
-        echo "ERROR: cann install info file not found" >&2
-        return 1
-    fi
-
-    CANN_VERSION=$(grep "^version" "$info_file" | awk -F= '{print $2}')
-    if [ -z "$CANN_VERSION" ]; then
-        echo "ERROR: failed to parse cann version" >&2
-        return 1
-    fi
-    
-    echo "cann version: ${CANN_VERSION}"
-    MAJOR_VERSION=$(echo "${CANN_VERSION}" | cut -d. -f1)
-    echo "cann major version: ${MAJOR_VERSION}"
-
-    if [ "$MAJOR_VERSION" -ge 9 ] && [ "$target_core" == "ai_core-Ascend310P3" ]; then
-        echo "ERROR: ai_core ${target_core} not supported in cann version ${CANN_VERSION}" >&2
-        return 1
-    fi
-
     # 获取系统ID
     OS_ID=$(cat /etc/os-release | sed -n 's/^ID=//p' | sed 's/^"//;s/"$//')
     if [ -z "${OS_ID}" ]; then
@@ -217,8 +189,6 @@ check_system_and_cann() {
     get_gpp_path || return 1
 
     export ARCH
-    export CANN_VERSION
-    export MAJOR_VERSION
     export OS_ID="$OS_ID"
     return 0
 }
@@ -264,6 +234,19 @@ generate_op_name() {
 }
 
 # =============================================================================
+# 设置 BUILD_VERSION 环境变量，供后续步骤使用
+# 用法: set_build_version "$build_dir"
+set_build_version() {
+    local build_dir="$1"
+    # msopgen新老工程生成的工程结构不同，判断是否存在 cmake 目录来区分版本
+    if [ -d "${build_dir}/cmake" ]; then
+        export BUILD_VERSION="legacy"
+    else
+        export BUILD_VERSION="modern"
+    fi
+}
+
+# =============================================================================
 # 生成算子代码
 # 用法: gen_build_dir "$work_dir" "$vendor_name" "$op_name"
 # ============================================================================
@@ -277,11 +260,10 @@ gen_build_dir() {
     rm -rf "${work_dir}/${vendor_name}"
     local json_file="${OPERATOR_JSON_FILE:-${work_dir}/${vendor_name}.json}"
     msopgen gen -i "${json_file}" -f tf -c ${ai_core} -lan cpp -out "${work_dir}/${vendor_name}" -m 0 -op ${op_name}
-    if [ -d "${work_dir}/${vendor_name}/cmake" ] && [ "${MAJOR_VERSION}" -eq 9 ]; then
-        export MAJOR_VERSION=8
-    fi
 
-    if [ "${MAJOR_VERSION}" -ge 9 ]; then
+    set_build_version "${work_dir}/${vendor_name}"
+
+    if [ "${BUILD_VERSION}" = "modern" ]; then
         overwrite_source_with_target "${work_dir}/${vendor_name}" \
         "${__PROJECT_ROOT}/custom_op_template" || return 1
     fi
@@ -363,14 +345,14 @@ build_onnx_adapter() {
 
 # ==============================================================================
 # 修改 CMakePresets.json
-# 用法: configure_cmake_presets "$vendor_name" "$ai_core" "$major_version" "$target_dir" "$enable_catlass"(可选)
+# 用法: configure_cmake_presets "$vendor_name" "$ai_core" "$build_version" "$target_dir" "$enable_catlass"(可选)
 # target_dir: 即 ${work_dir}/${vendor_name} 的绝对路径
 # c310 + OPERATOR_JSON_FILE：结束前复制到 dirname(target_dir)/${首参 v_name}.json，供 CPack 与 msopgen -i 共用同一描述文件。
 # ==============================================================================
 configure_cmake_presets() {
     local v_name="$1"
     local a_core="$2"
-    local maj_ver="$3"
+    local build_ver="$3"
     local target_dir="$4"
     if [ -z "$5" ]; then
         local enable_catlass=${enable_catlass:-"False"}
@@ -386,7 +368,7 @@ configure_cmake_presets() {
     fi
 
     # 修改 CANN 路径
-    if [ "$maj_ver" -lt 9 ]; then
+    if [ "$build_ver" = "legacy" ]; then
         sed -i "s:\"/usr/local/Ascend/latest\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
     else 
         sed -i "s:\"/usr/local/Ascend/cann\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
@@ -428,6 +410,20 @@ configure_cmake_presets() {
     if [ -n "$CATLASS_HOME" ] && [ "$enable_catlass" = "True" ]; then
         sed -i "s:\"/usr/local/Ascend/catlass\":\"${CATLASS_HOME}\":g" "$cmake_file"
         line=`awk '/ENABLE_CATLASS/{print NR}' "$cmake_file"`
+        line=`expr ${line} + 2`
+        sed -i "${line}s/False/True/g" "$cmake_file"
+    fi
+
+    # 修改 ONNX 支持选项
+    if [ "$with_onnx" = "true" ]; then
+        line=`awk '/WITH_ONNX/{print NR}' "$cmake_file"`
+        line=`expr ${line} + 2`
+        sed -i "${line}s/False/True/g" "$cmake_file"
+    fi
+
+    # 修改ENABLE_SOURCE_PACKAGE选项，开启源包构建
+    if [ "$ENABLE_SOURCE_PACKAGE" = "true" ] && [ "$BUILD_VERSION" = "modern" ]; then
+        line=`awk '/ENABLE_SOURCE_PACKAGE/{print NR}' "$cmake_file"`
         line=`expr ${line} + 2`
         sed -i "${line}s/False/True/g" "$cmake_file"
     fi
@@ -492,10 +488,10 @@ apply_op_kernel_compile_options_dual() {
 
 # ==============================================================================
 # 编译前准备与执行编译，兼容cann 9.0以下版本
-# 用法: prepare_and_build "$major_version" "$vendor_name" "$target_dir" "$enable_catlass"(可选)
+# 用法: prepare_and_build "$build_version" "$vendor_name" "$target_dir" "$enable_catlass"(可选)
 # ==============================================================================
 prepare_and_build() {
-    local maj_ver="$1"
+    local build_ver="$1"
     local v_name="$2"
     local target_dir="$3"
     if [ -z "$4" ]; then
@@ -504,9 +500,9 @@ prepare_and_build() {
         local enable_catlass="$4"
     fi
 
-    if [ "$maj_ver" -lt 9 ]; then
-        echo "Preparing legacy build environment (CANN < 9.0)..."
-        
+    if [ "$build_ver" = "legacy" ]; then
+        echo "Preparing legacy build environment (legacy version)..."
+
         # 禁止 CRC
         local makeself_cmake="${target_dir}/cmake/makeself.cmake"
         if [ -f "$makeself_cmake" ]; then
@@ -516,21 +512,23 @@ prepare_and_build() {
         # 修改 op_kernel/CMakeLists.txt
         local kernel_cmakelists="${target_dir}/op_kernel/CMakeLists.txt"
         if [ -f "$kernel_cmakelists" ]; then
-            local add_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../${v_name}.json \
-                            DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${v_name}_impl/dynamic)"
-            sed -i "\$a\\$add_line" "$kernel_cmakelists"
+            if [ "$with_onnx" = "true" ]; then
+                local add_line="install(FILES \${CMAKE_CURRENT_SOURCE_DIR}/../../${v_name}.json \
+                                DESTINATION packages/vendors/\${vendor_name}/op_impl/ai_core/tbe/\${v_name}_impl/dynamic)"
+                sed -i "\$a\\$add_line" "$kernel_cmakelists"
+            fi
             sed -i '1i\add_ops_compile_options(ALL OPTIONS --cce-long-call=true)' "$kernel_cmakelists"
         fi
 
         if [ -n "$CATLASS_HOME" ] && [ "$enable_catlass" = "True" ] && [ -f "$kernel_cmakelists" ]; then
             local catlass_include_dir="${CATLASS_HOME}/include"
             if [ "${AI_CORE_PROFILE:-v220}" = "c310" ]; then
-                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 \
-                    -DCATLASS_BISHENG_ARCH=a5 -DIS_A5=1  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=3510 -DARCH_CODE=Ascend950 -DUSE_TLA=1 \
+                    -DCATLASS_BISHENG_ARCH=a5 -DCATLASS_ARCH_A5_ENABLED=true -DENABLE_CV_COMM_VIA_SSBUF=true \
                     -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
             else
-                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 \
-                    -DCATLASS_BISHENG_ARCH=a2 -DIS_A5=0  -DENABLE_CV_COMM_VIA_SSBUF=true \
+                sed -i "2i\add_ops_compile_options(ALL OPTIONS -DCATLASS_ARCH=2201 -DARCH_CODE=AtlasA2 -DUSE_TLA=0 \
+                    -DCATLASS_BISHENG_ARCH=a2 -DCATLASS_ARCH_A2_ENABLED=true -DENABLE_CV_COMM_VIA_SSBUF=true \
                     -DCATLASS_HOME=${CATLASS_HOME} -I${catlass_include_dir})" "${kernel_cmakelists}"
             fi
         fi
@@ -654,8 +652,8 @@ build_and_install_operator() {
     if [ "$with_onnx" = "true" ]; then
         build_onnx_adapter "$ai_core" "$ONNX_PATH" "$JSON_FILE" "$vendor_name" "$work_dir" || return 1
     fi
-    configure_cmake_presets "$cmake_preset" "$ai_core" "$MAJOR_VERSION" "${work_dir}/${vendor_name}" || return 1
-    prepare_and_build "$MAJOR_VERSION" "$cmake_preset" "${work_dir}/${vendor_name}" || return 1
+    configure_cmake_presets "$cmake_preset" "$ai_core" "$BUILD_VERSION" "${work_dir}/${vendor_name}" || return 1
+    prepare_and_build "$BUILD_VERSION" "$cmake_preset" "${work_dir}/${vendor_name}" || return 1
     install_operator_package "$OS_ID" "$ARCH" "${work_dir}/${vendor_name}" || return 1
 
     echo "=========================================="
