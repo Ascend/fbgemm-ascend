@@ -70,13 +70,9 @@ torch.ops.mxrec.lru_cache_populate_byte(
 
 # 运行算子样例
 
-## 算子编译与部署
+## 编译与部署
 
-AscendC 子算子（`LruCacheFindUncached`、`LruCacheInsertByte`）编译部署请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中「单算子使用说明」-「算子编译」章节。
-
-## PyTorch 编译
-
-PyTorch 适配层编译请参考 [RecSDK\cust_op\README.md](../../../../README.md) 中「单算子使用说明」-「算子适配层编译」章节。进入本目录执行：
+AscendC 子算子（`LruCacheFindUncached`、`LruCacheInsertByte`）编译部署请参考 [README.md](../../../README.md) 进行编译
 
 ```bash
 cd lru_cache_populate_byte

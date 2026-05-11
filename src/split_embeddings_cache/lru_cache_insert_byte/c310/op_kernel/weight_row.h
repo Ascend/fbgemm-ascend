@@ -36,12 +36,12 @@ struct WeightRowU8 {
     __gm__ uint8_t* cache_row_;
     int32_t dim_;
 
-    __aicore__ inline WeightRowU8(__gm__ uint8_t* row, __gm__ uint8_t* cache_row, int32_t dim)
+    __simt_callee__ inline WeightRowU8(__gm__ uint8_t* row, __gm__ uint8_t* cache_row, int32_t dim)
         : row_(row), cache_row_(cache_row), dim_(dim)
     {}
 
     /// API-compatible with FBGEMM 7-arg ctor; stochastic / philox ignored on device.
-    __aicore__ inline WeightRowU8(
+    __simt_callee__ inline WeightRowU8(
         __gm__ uint8_t* row,
         __gm__ uint8_t* cache_row,
         int32_t dim,
@@ -52,7 +52,7 @@ struct WeightRowU8 {
     {}
 
     /// Cooperative copy: UVM row -> dst (cache line), striping by lane.
-    __aicore__ inline void warp_copy_to_cache(
+    __simt_callee__ inline void warp_copy_to_cache(
         __gm__ uint8_t* dst_row, int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
     {
         for (int32_t d = lane_id; d < dim_bytes; d += num_lanes) {
@@ -62,7 +62,7 @@ struct WeightRowU8 {
     }
 
     /// Cooperative copy: cache line -> UVM row (evict), striping by lane.
-    __aicore__ inline void warp_evict_cache(int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
+    __simt_callee__ inline void warp_evict_cache(int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
     {
         for (int32_t d = lane_id; d < dim_bytes; d += num_lanes) {
             row_[d] = cache_row_[d];
@@ -79,11 +79,11 @@ struct WeightRow {
         "RecSDK fbgemm_compat::WeightRow: only uint8 / uint8 / uint8 (insert_byte) is implemented");
     WeightRowU8 impl_;
 
-    __aicore__ inline WeightRow(__gm__ emb_t* row, __gm__ cache_t* cache_row, int32_t dim)
+    __simt_callee__  inline WeightRow(__gm__ emb_t* row, __gm__ cache_t* cache_row, int32_t dim)
         : impl_(reinterpret_cast<__gm__ uint8_t*>(row), reinterpret_cast<__gm__ uint8_t*>(cache_row), dim)
     {}
 
-    __aicore__ inline WeightRow(
+    __simt_callee__ inline WeightRow(
         __gm__ emb_t* row,
         __gm__ cache_t* cache_row,
         int32_t dim,
@@ -98,14 +98,14 @@ struct WeightRow {
               salt)
     {}
 
-    __aicore__ inline void warp_copy_to_cache(
+    __simt_callee__ inline void warp_copy_to_cache(
         __gm__ cache_t* dst_row, int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
     {
         impl_.warp_copy_to_cache(
             reinterpret_cast<__gm__ uint8_t*>(dst_row), dim_bytes, num_lanes, lane_id);
     }
 
-    __aicore__ inline void warp_evict_cache(int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
+    __simt_callee__ inline void warp_evict_cache(int32_t dim_bytes, int32_t num_lanes, int32_t lane_id) const
     {
         impl_.warp_evict_cache(dim_bytes, num_lanes, lane_id);
     }
