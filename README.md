@@ -89,7 +89,7 @@ fbgemm-ascend/                                 # 项目根目录
 项目可在 Atlas A2/A3/A5 训练系列产品上运行，推荐的基础环境如下：
 
 - 操作系统：Ubuntu 22.04，或其它 CANN 官方支持的 Linux 发行版。
-- Python：>= 3.8。
+- Python：>= 3.10。
 - PyTorch：与 `torch_npu` 版本匹配的官方/Ascend 分发包。
 - CANN toolkit：例如 `cann-9.0.T501`，需包含 `Ascend-cann-toolkit` 与编译依赖。
 - 构建依赖：`scikit-build`、`cmake`、`ninja`、`gcc/g++`（建议 9.x 或 10.x）。
@@ -107,7 +107,7 @@ fbgemm-ascend/                                 # 项目根目录
 bash build_whl.sh
 ```
 
-生成的 whl 包位于 `dist/`，内容与源码安装完全一致，可直接 `pip install dist/fbgemm_ascend-*.whl` 部署。
+生成的 whl 包位于 `dist/`，内容与源码安装完全一致，可直接 `pip install dist/Ascend-fbgemm_ascend-*.whl` 部署。
 
 ## 源码编译与安装
 
