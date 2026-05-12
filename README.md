@@ -104,7 +104,7 @@ fbgemm-ascend/                                 # 项目根目录
 bash build_whl.sh
 ```
 
-生成的 whl 包位于 `dist/`，内容与源码安装完全一致，可直接 `pip install dist/Ascend-fbgemm_ascend-*.whl` 部署。
+生成的 whl 包位于 `dist/`，内容与源码安装完全一致，可直接 `pip install dist/fbgemm_ascend-*.whl` 部署。
 
 ## 源码编译与安装
 
@@ -113,24 +113,13 @@ bash build_whl.sh
 项目默认使用 `scikit-build` + `cmake` 构建，可以直接从源码安装：
 
 ```bash
-pip install . --no-build-isolation
+bash build.sh
 ```
 
 如需安装前确保依赖完备，可先执行：
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 重新安装/清理缓存
-
-重新安装前建议清理本地缓存并卸载旧包：
-
-```bash
-rm -rf _skbuild
-rm -rf fbgemm_ascend.egg-info/
-pip uninstall fbgemm_ascend -y
-pip install . --no-build-isolation
 ```
 
 ### 芯片版本与自动探测
