@@ -167,12 +167,5 @@ TORCH_LIBRARY_FRAGMENT(fbgemm, m)
 
     m.impl("split_embedding_codegen_forward_unweighted_cuda",
         torch::dispatch(c10::DispatchKey::Autograd,
-                        static_cast<at::Tensor(*)(const at::Tensor&, const at::Tensor&, const at::Tensor&,
-                                                  const at::Tensor&, const at::Tensor&, const at::Tensor&,
-                                                  const c10::SymInt, const c10::SymInt, const at::Tensor&,
-                                                  const at::Tensor&, const int64_t, const at::Tensor&,
-                                                  const at::Tensor&, const int64_t, const bool,
-                                                  const c10::optional<at::Tensor>&, const c10::optional<at::Tensor>&,
-                                                  const c10::optional<at::Tensor>&)>
-                        (&fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
+                        TORCH_FN(fbgemm_npu_lookups::split_embedding_codegen_forward_unweighted_npu)));
 }
