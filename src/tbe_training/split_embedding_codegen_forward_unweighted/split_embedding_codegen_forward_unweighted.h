@@ -61,9 +61,9 @@ at::Tensor split_embedding_codegen_forward_unweighted_cuda(const at::Tensor& dev
                                                            const at::Tensor& uvm_cache_stats,
                                                            const int64_t output_dtype,
                                                            const bool is_experimental,
-                                                           const at::Tensor& hash_indices,
-                                                           const at::Tensor& offset_per_key,
-                                                           const at::Tensor& rows_per_table);
+                                                           const c10::optional<at::Tensor>& hash_indices,
+                                                           const c10::optional<at::Tensor>& offset_per_key,
+                                                           const c10::optional<at::Tensor>& rows_per_table);
 
 at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_weights,
                                                           const at::Tensor& uvm_weights,
@@ -80,8 +80,8 @@ at::Tensor split_embedding_codegen_forward_unweighted_npu(const at::Tensor& dev_
                                                           const at::Tensor& uvm_cache_stats,
                                                           const int64_t output_dtype,
                                                           const bool is_experimental,
-                                                          const at::Tensor& hash_indices,
-                                                          const at::Tensor& offset_per_key,
-                                                          const at::Tensor& rows_per_table);
+                                                          const c10::optional<at::Tensor>& hash_indices,
+                                                          const c10::optional<at::Tensor>& offset_per_key,
+                                                          const c10::optional<at::Tensor>& rows_per_table);
 }; // namespace fbgemm_npu_lookups
 #endif // MXREC_ADD_ONS_SPLIT_EMBEDDING_CODEGEN_FORWARD_UNWEIGHTED_H
