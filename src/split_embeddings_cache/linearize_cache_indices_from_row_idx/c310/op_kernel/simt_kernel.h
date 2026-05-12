@@ -1,0 +1,58 @@
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
+#ifndef SIMT_KERNEL_H
+#define SIMT_KERNEL_H
+
+#include "kernel_operator.h"
+#include "simt_api/asc_simt.h"
+
+using namespace AscendC;
+
+template <typename TableIdType, typename RowIdType>
+__simt_vf__ __aicore__ LAUNCH_BOUND(1024) inline void
+SimtLinearizeCacheIndicesFromRowIdxMultiThread(
+    __gm__ int64_t* cache_hash_size_cumsum,
+    __gm__ TableIdType* update_table_indices,
+    __gm__ RowIdType* update_row_indices,
+    __gm__ RowIdType* linear_cache_indices,
+    int64_t totalLength,
+    int64_t cumsumLength)
+{
+    // constexpr int32_t kDataPerThread = 4;
+    int32_t threadIdx = static_cast<int32_t>(AscendC::Simt::GetThreadIdx<0>());
+    int32_t blockIdx = static_cast<int32_t>(AscendC::Simt::GetBlockIdx());
+    int32_t threadNum = static_cast<int32_t>(AscendC::Simt::GetThreadNum<0>());
+    int32_t totalThreadNum = AscendC::Simt::GetBlockNum() * threadNum;
+
+    int64_t start = (static_cast<int64_t>(blockIdx) * threadNum + threadIdx) ;
+    int64_t kDataPerThread = (totalLength + totalThreadNum - 1) / totalThreadNum;
+    int64_t sentinel = cache_hash_size_cumsum[cumsumLength - 1];
+    for (int i = 0; i < kDataPerThread; ++i) {
+        int64_t idx = start + i * totalThreadNum;
+        if (idx >= totalLength) return;
+        int64_t tableId = static_cast<int64_t>(update_table_indices[idx]);
+        int64_t rowId = static_cast<int64_t>(update_row_indices[idx]);
+        int64_t offset = cache_hash_size_cumsum[tableId];
+
+        if (offset >= 0 && rowId >= 0) {
+            linear_cache_indices[idx] = static_cast<RowIdType>(offset + rowId);
+        } else {
+            linear_cache_indices[idx] = sentinel;
+        }
+    }
+}
+    
+#endif  // SIMT_KERNEL_H

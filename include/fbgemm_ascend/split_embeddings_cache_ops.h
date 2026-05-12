@@ -30,3 +30,9 @@ at::Tensor linearize_cache_indices_npu(
     const int64_t max_B,
     const int64_t indices_base_offset
 );
+
+at::Tensor linearize_cache_indices_from_row_idx_npu(
+    const at::Tensor& cache_hash_size_cumsum,
+    const at::Tensor& update_table_indices,
+    const at::Tensor& update_row_indices
+);

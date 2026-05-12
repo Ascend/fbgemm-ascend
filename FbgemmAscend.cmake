@@ -19,6 +19,7 @@ set(ASCENDC_A5_ONLY_OPS
     group_index_select_dim0_backward
     float_to_bfloat16_quantized
     bfloat16_quantized_to_float
+    linearize_cache_indices_from_row_idx
 )
 
 set(ASCENDC_A3_OPS
@@ -110,6 +111,7 @@ set(_ASCENDC_OPS
     "expand_into_jagged_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/expand_into_jagged_permute"
     "invert_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/invert_permute"
     "linearize_cache_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/linearize_cache_indices"
+    "linearize_cache_indices_from_row_idx|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/linearize_cache_indices_from_row_idx"
     "offsets_range|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/offsets_range"
     "permute2d_sparse_data|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/permute2d_sparse_data"
     "segment_sum_csr|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/segment_sum_csr"
@@ -188,6 +190,7 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
     src/sparse_ops/invert_permute/invert_permute.cpp
     src/split_embeddings_cache/linearize_cache_indices/linearize_cache_indices.cpp
+    src/split_embeddings_cache/linearize_cache_indices_from_row_idx/linearize_cache_indices_from_row_idx.cpp
     src/sparse_ops/offsets_range/offsets_range.cpp
     src/sparse_ops/permute2d_sparse_data/permute1d_sparse_data.cpp
     src/sparse_ops/permute2d_sparse_data/permute2d_sparse_data.cpp
