@@ -9,6 +9,7 @@ set(ASCENDC_A5_ONLY_OPS
     invert_permute
     init_address_lookup
     int_nbit_split_embedding_codegen_lookup_function
+    pruned_array_lookup_from_row_idx
     run_length_encode
     pruned_hashmap_lookup
     group_index_select_dim0
@@ -99,6 +100,7 @@ endfunction()
 
 set(_ASCENDC_OPS
     "float_or_half_to_fused_nbit_rowwise|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_or_half_to_fused_nbit_rowwise"
+    "pruned_array_lookup_from_row_idx|${FBGEMM_ASCEND_SOURCE_DIR}/src/embedding_inplace_ops/pruned_array_lookup_from_row_idx"
     "asynchronous_complete_cumsum|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/asynchronous_complete_cumsum"
     "block_bucketize_sparse_features|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/block_bucketize_sparse_features"
     "expand_into_jagged_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/expand_into_jagged_permute"
@@ -172,6 +174,7 @@ get_property(ASCENDC_TARGETS GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS)
 # ---------------------------------------------------------------------------
 set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/quantize_ops/float_or_half_to_fused_nbit_rowwise/float_or_half_to_fused_nbit_rowwise.cpp
+    src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/pruned_array_lookup_from_row_idx.cpp
     src/sparse_ops/asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp
     src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
     src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp

@@ -61,6 +61,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/split_embeddings_cache/lru_cache_populate_byte | [c310](src/split_embeddings_cache/lru_cache_populate_byte/README.md)                                                                                                       |
 | src/sparse_ops/group_index_select_dim0 | [c310](src/sparse_ops/group_index_select_dim0/c310/README.md)                                                                                                      |
 | src/sparse_ops/group_index_select_dim0_backward | [c310](src/sparse_ops/group_index_select_dim0_backward/c310/README.md)                                                                                             |
+| src/embedding_inplace_ops/pruned_array_lookup_from_row_idx | [c310](src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/README.md)                                            |
 
 更多算子可在对应目录的 README.md 中查看具体接口、输入输出张量格式及样例代码。
 
