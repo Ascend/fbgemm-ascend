@@ -63,21 +63,6 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
                                                  static_cast<int64_t>(blockDim));
     elemsPerBlock = (elemsPerBlock + THREADS_PER_WARP - 1) / THREADS_PER_WARP * THREADS_PER_WARP;
 
-    int32_t tilingKey = -1;
-    if (rowType == ge::DT_INT64 && remapType == ge::DT_INT64) {
-        tilingKey = 0;
-    } else if (rowType == ge::DT_INT64 && remapType == ge::DT_INT32) {
-        tilingKey = 1;
-    } else if (rowType == ge::DT_INT32 && remapType == ge::DT_INT64) {
-        tilingKey = 2;
-    } else if (rowType == ge::DT_INT32 && remapType == ge::DT_INT32) {
-        tilingKey = 3;
-    } else {
-        OPS_LOG_E("[ERROR] PrunedArrayLookupFromRowIdx: unsupported dtype combo for row/remap.", NULL);
-        return ge::GRAPH_FAILED;
-    }
-    context->SetTilingKey(tilingKey);
-
     size_t* workspaceSize = context->GetWorkspaceSizes(1);
     OPS_LOG_E_IF_NULL("workspaceSize", workspaceSize, return ge::GRAPH_FAILED);
     workspaceSize[0] = ascendPlatform.GetLibApiWorkSpaceSize();
