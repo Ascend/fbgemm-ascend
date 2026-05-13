@@ -16,6 +16,8 @@ set(ASCENDC_A5_ONLY_OPS
     group_index_select_dim0
     group_index_select_dim0_backward
     linearize_cache_indices_from_row_idx
+    lru_cache_find_uncached
+    lru_cache_insert_byte
 )
 
 set(ASCENDC_A3_OPS
@@ -127,6 +129,8 @@ set(_ASCENDC_OPS
     "run_length_encode|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
     "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
     "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
+    "lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_find_uncached"
+    "lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_insert_byte"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
