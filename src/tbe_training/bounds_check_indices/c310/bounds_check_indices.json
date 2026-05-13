@@ -1,0 +1,193 @@
+[
+  {
+    "op": "BoundsCheckIndicesV1",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "rows_per_table",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "warning",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "B_offsets",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "indices_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "offsets_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "warning_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "bounds_check_mode",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "max_B",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": 0
+      },
+      {
+        "name": "T",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "B",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "total_B",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "vbe",
+        "param_type": "required",
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "op": "BoundsCheckIndicesV2",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "rows_per_table",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "warning",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "B_offsets",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "b_t_map",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "indices_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "offsets_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "warning_out",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      }
+    ],
+    "attr": [
+      {
+        "name": "bounds_check_mode",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "info_B_num_bits",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": -1
+      },
+      {
+        "name": "info_B_mask",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": -1
+      },
+      {
+        "name": "T",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "B",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "total_B",
+        "param_type": "required",
+        "type": "int"
+      },
+      {
+        "name": "vbe",
+        "param_type": "required",
+        "type": "bool"
+      }
+    ]
+  }
+]
+ 

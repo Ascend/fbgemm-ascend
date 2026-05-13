@@ -5,6 +5,7 @@ set_property(GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS "")
 set(ASCENDC_A5_ONLY_OPS
     float_or_half_to_fused_nbit_rowwise
     block_bucketize_sparse_features
+    bounds_check_indices
     expand_into_jagged_permute
     invert_permute
     init_address_lookup
@@ -122,6 +123,7 @@ set(_ASCENDC_OPS
     "dense_embedding_codegen_lookup_function|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/dense_embedding_codegen_lookup_function"
     "dense_embedding_codegen_lookup_function_grad|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/dense_embedding_codegen_lookup_function_grad"
     "split_embedding_codegen_forward_unweighted|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/split_embedding_codegen_forward_unweighted"
+    "bounds_check_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/bounds_check_indices"
     "run_length_encode|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
     "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
     "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
@@ -205,6 +207,7 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
+    src/tbe_training/bounds_check_indices/bounds_check_indices.cpp
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/sparse_ops/group_index_select_dim0/group_index_select_dim0.cpp
     src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp

@@ -86,3 +86,17 @@ void init_address_lookup_impl_npu(
     at::Tensor& address_lookups,
     at::Tensor& buffer_offsets,
     at::Tensor& emb_sizes);
+
+void bounds_check_indices_impl_npu(
+    at::Tensor& rows_per_table,
+    at::Tensor& indices,
+    at::Tensor& offsets,
+    int64_t bounds_check_mode,
+    at::Tensor& warning,
+    const c10::optional<at::Tensor>& weights,
+    const c10::optional<at::Tensor>& B_offsets,
+    int64_t max_B,
+    const c10::optional<at::Tensor>& b_t_map,
+    int64_t info_B_num_bits,
+    int64_t info_B_mask,
+    int8_t bounds_check_version);
