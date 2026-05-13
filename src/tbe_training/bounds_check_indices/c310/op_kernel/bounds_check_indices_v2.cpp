@@ -13,7 +13,154 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#include "kernel_operator.h"
+#include "bounds_check_indices_common.h"
+
+namespace {
+constexpr int32_t kWarpSize = 32;
+constexpr int32_t kNumThreads = 1024;
+}
+
+#define DISPATCH_BOUNDS_CHECK(indiceType, vbe, mode)                         \
+    AscendC::Simt::VF_CALL<BoundsCheckIndicesV2Impl<indiceType, vbe, mode>>( \
+        AscendC::Simt::Dim3{kWarpSize, kNumThreads / kWarpSize, 1},          \
+        reinterpret_cast<__gm__ int64_t*>(rowsPerTable),                     \
+        reinterpret_cast<__gm__ indiceType*>(indices),                       \
+        reinterpret_cast<__gm__ indiceType*>(offsets),                       \
+        reinterpret_cast<__gm__ int64_t*>(warning),                          \
+        reinterpret_cast<__gm__ int32_t*>(bOffsets),                         \
+        reinterpret_cast<__gm__ int32_t*>(bTMap),                            \
+        static_cast<indiceType>(tilingData.numIndices),                      \
+        tilingData.infoBNumBits,                                             \
+        tilingData.infoBMask,                                                \
+        tilingData.numTables,                                                \
+        tilingData.batchSize,                                                \
+        tilingData.totalB,                                                   \
+        tilingData.batchSizeDivMagic,                                        \
+        tilingData.batchSizeDivShift)
+
+template <typename indiceType, bool vbe, BoundsCheckMode mode>
+__simt_vf__ __aicore__ LAUNCH_BOUND(kNumThreads) inline void BoundsCheckIndicesV2Impl(
+    __gm__ int64_t* rowsPerTable,
+    __gm__ indiceType* indices,
+    __gm__ indiceType* offsets,
+    __gm__ int64_t* warning,
+    __gm__ int32_t* bOffsets,
+    __gm__ int32_t* bTMap,
+    indiceType numIndices,
+    int32_t infoBNumBits,
+    uint32_t infoBMask,
+    int32_t numTables,
+    int32_t batchSize,
+    int32_t totalB,
+    uint32_t batchSizeDivMagic,
+    uint32_t batchSizeDivShift)
+{
+    int32_t bTStartIdx = blockIdx.x * blockDim.y + threadIdx.y;
+    int64_t warningInc = 0;
+    int32_t invalidBTIdx = -1, invalidElemIdx = -1;
+    indiceType invalidIdx = -1;
+
+    if (bTStartIdx == 0 && threadIdx.x == 0) {
+        if (mode == BoundsCheckMode::FATAL) {
+            BOUNDS_ASSERT(offsets[totalB] == numIndices);
+        } else if (mode == BoundsCheckMode::WARNING) {
+            if (offsets[totalB] != numIndices) {
+                if (asc_atomic_add(&warning[0], 1) == 0) {
+                    AscendC::Simt::printf("EmbeddingBoundsCheck (VBE %u): the last element in offsets is incorrect for "
+                                          "total batch size total_B: %d, total table num T: %d, last element in offsets: %lld, indices size: %lld. "
+                                          " Setting the last element in offsets to be indices size.\n",
+                                          vbe, totalB, numTables, static_cast<int64_t>(offsets[totalB]), static_cast<int64_t>(numIndices));
+                }
+                offsets[totalB] = numIndices;
+            }
+        } else if (mode == BoundsCheckMode::IGNORE) {
+            if (offsets[totalB] != numIndices) {
+                offsets[totalB] = numIndices;
+            }
+        }
+    }
+
+    const FastDivmod<uint32_t> fd(batchSizeDivMagic, batchSizeDivShift, static_cast<uint32_t>(batchSize));
+    for (int32_t bTIdx = bTStartIdx; bTIdx < totalB; bTIdx += blockDim.y * gridDim.x) {
+        int32_t tIdx = 0;
+        int32_t bIdx = 0;
+        if (vbe) {
+            uint32_t info = bTMap[bTIdx];
+            tIdx = info >> infoBNumBits;
+            bIdx = info & infoBMask;
+        } else {
+            tIdx = fd.Div(bTIdx);
+            bIdx = fd.Mod(bTIdx);
+        }
+
+        int64_t numRows = rowsPerTable[tIdx];
+        indiceType indiceStart = offsets[bTIdx];
+        indiceType indiceEnd = offsets[bTIdx + 1];
+
+        if (mode == BoundsCheckMode::FATAL) {
+            BOUNDS_ASSERT(indiceStart >= 0);
+            BOUNDS_ASSERT(indiceStart <= indiceEnd);
+            BOUNDS_ASSERT(indiceEnd <= numIndices);
+        } else if (mode == BoundsCheckMode::WARNING) {
+            if (indiceStart < 0 || indiceStart > indiceEnd || indiceEnd > numIndices) {
+                if (threadIdx.x == 0 && asc_atomic_add(&warning[0], 1) == 0) {
+                    AscendC::Simt::printf("EmbeddingBoundsCheck (VBE %u): (at least one) Out of bounds access for "
+                                        "batch: %d, table: %d, indices_start: %lld, indices_end: %lld,"
+                                        " num_indices: %lld. Setting indices_start and indices_end within the range.\n",
+                                        vbe, bIdx, tIdx, static_cast<int64_t>(indiceStart), static_cast<int64_t>(indiceEnd), static_cast<int64_t>(numIndices));
+                }
+                AdjustOffset(indiceStart, indiceEnd, numIndices, &offsets[bTIdx], &offsets[bTIdx + 1]);
+            }
+        } else if (mode == BoundsCheckMode::IGNORE) {
+            AdjustOffset(indiceStart, indiceEnd, numIndices, &offsets[bTIdx], &offsets[bTIdx + 1]);
+        }
+
+        int32_t bagSize = indiceEnd - indiceStart;
+        for (int32_t i = threadIdx.x; i < bagSize; i += kWarpSize) {
+            indiceType idx = indices[indiceStart + i];
+
+            if (idx == -1) {
+                continue;
+            }
+
+            if (mode == BoundsCheckMode::FATAL) {
+                BOUNDS_ASSERT(idx >= 0);
+                BOUNDS_ASSERT(idx < numRows);
+            } else if (mode == BoundsCheckMode::WARNING) {
+                if (idx < 0 || idx >= numRows) {
+                    invalidElemIdx = i;
+                    invalidIdx = idx;
+                    invalidBTIdx = bTIdx;
+                    indices[indiceStart + i] = 0;
+                    warningInc += 1;
+                }
+            } else if (mode == BoundsCheckMode::IGNORE) {
+                if (idx < 0 || idx >= numRows) {
+                    indices[indiceStart + i] = 0;
+                }
+            }
+        }
+    }
+
+    if (warningInc == 0 || asc_atomic_add(&warning[0], warningInc) != 0) {
+        return;
+    }
+
+    if (mode == BoundsCheckMode::WARNING && invalidElemIdx != -1) {
+        int32_t tIdx = fd.Div(invalidBTIdx);
+        int32_t bIdx = fd.Mod(invalidBTIdx);
+        if (vbe) {
+            batchSize = bOffsets[tIdx + 1] - bOffsets[tIdx];
+        }
+
+        AscendC::Simt::printf(
+            "EmbeddingBoundsCheck (VBE %u): (at least one) Out of bounds access for "
+            "batch: %d, table: %d, bag element: %d, idx: %lld, num_rows: %lld, "
+            "indices_start: %lld, indices_end: %lld, T: %d, B: %d, b_t: %d. Setting idx to zero.\n",
+            vbe, bIdx, tIdx, invalidElemIdx, static_cast<int64_t>(invalidIdx), static_cast<int64_t>(rowsPerTable[tIdx]),
+            static_cast<int64_t>(offsets[invalidBTIdx]), static_cast<int64_t>(offsets[invalidBTIdx + 1]), numTables, batchSize, invalidBTIdx);
+        }
+}
 
 extern "C" __global__ __aicore__ void bounds_check_indices_v2(
     GM_ADDR rowsPerTable,
@@ -26,5 +173,14 @@ extern "C" __global__ __aicore__ void bounds_check_indices_v2(
     GM_ADDR offsetsOut,
     GM_ADDR warningOut,
     GM_ADDR workspace,
-    GM_ADDR tiling) {
+    GM_ADDR tiling)
+{
+    GET_TILING_DATA(tilingData, tiling);
+
+    bool vbe = (tilingData.vbe != 0);
+    BoundsCheckMode mode = static_cast<BoundsCheckMode>(tilingData.boundsCheckMode);
+
+    INVOKE_BOUNDS_CHECK(DISPATCH_BOUNDS_CHECK, DTYPE_INDICES, vbe, mode)
 }
+
+#undef DISPATCH_BOUNDS_CHECK

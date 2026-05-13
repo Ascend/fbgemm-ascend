@@ -58,6 +58,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/tbe_training/dense_embedding_codegen_lookup_function | [v220](src/tbe_training/dense_embedding_codegen_lookup_function/v220/README.md)                                                                                            |
 | src/tbe_training/dense_embedding_codegen_lookup_function_grad | [v220](src/tbe_training/dense_embedding_codegen_lookup_function_grad/v220/README.md)                                                                                       |
 | src/tbe_training/split_embedding_codegen_forward_unweighted | [c310/v220](src/tbe_training/split_embedding_codegen_forward_unweighted/README.md)                                                                                         |
+| src/tbe_training/bounds_check_indices | [c310](src/tbe_training/bounds_check_indices/README.md) |
 | src/split_embeddings_cache/lru_cache_populate_byte | [c310](src/split_embeddings_cache/lru_cache_populate_byte/README.md)                                                                                                       |
 | src/sparse_ops/group_index_select_dim0 | [c310](src/sparse_ops/group_index_select_dim0/c310/README.md)                                                                                                      |
 | src/sparse_ops/group_index_select_dim0_backward | [c310](src/sparse_ops/group_index_select_dim0_backward/c310/README.md)                                                                                             |

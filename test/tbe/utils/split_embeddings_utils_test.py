@@ -36,11 +36,258 @@ from hypothesis import assume, given, settings, Verbosity
 
 from ..common import MAX_EXAMPLES, use_cpu_strategy
 
+from itertools import accumulate
+
+from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
+    BoundsCheckMode,
+    PoolingMode,
+)
+
+from fbgemm_gpu.split_table_batched_embeddings_ops_training_common import (
+    generate_vbe_metadata,
+)
 
 VERBOSITY: Verbosity = Verbosity.verbose
 
 
 class SplitEmbeddingsUtilsTest(unittest.TestCase):
+    @given(
+        T=st.integers(min_value=1, max_value=64),
+        B=st.integers(min_value=1, max_value=64),
+        max_L=st.integers(min_value=1, max_value=64),
+        bounds_check_mode=st.sampled_from(
+            [
+                BoundsCheckMode.FATAL,
+                BoundsCheckMode.WARNING,
+                BoundsCheckMode.IGNORE,
+            ]
+        ),
+        weighted=st.booleans(),
+        dtype=st.sampled_from(
+            [
+                torch.int64,
+                torch.int32,
+            ]
+        ),
+        mixed_B=st.booleans(),
+        bounds_check_version=st.sampled_from((1, 2)),
+    )
+    @settings(verbosity=VERBOSITY, max_examples=MAX_EXAMPLES, deadline=None)
+    def test_bounds_check(  # noqa C901
+        self,
+        T: int,
+        B: int,
+        max_L: int,
+        bounds_check_mode: BoundsCheckMode,
+        weighted: bool,
+        dtype: torch.dtype,
+        mixed_B: bool,
+        bounds_check_version: int,
+    ) -> None:
+        if not torch.npu.is_available():
+            self.skipTest("npu not available")
+        rows_per_table = torch.tensor(
+            np.random.randint(low=1, high=1000, size=(T,))
+        ).long()
+        if not mixed_B:
+            Bs = [B] * T
+        else:
+            low = max(int(0.25 * B), 1)
+            high = int(B)
+            if low == high:
+                Bs = [B] * T
+            else:
+                Bs = [np.random.randint(low=low, high=high) for _ in range(T)]
+        B_offsets = [0] + list(accumulate(Bs))
+        Ls = np.random.randint(low=0, high=max_L, size=(B_offsets[-1],))
+        indices = [
+            np.random.randint(
+                low=0,
+                high=rows_per_table[t],
+                size=sum(Ls[B_offsets[t] : B_offsets[t + 1]]),
+            )
+            for t in range(T)
+        ]
+        indices = torch.tensor(np.concatenate(indices, axis=0)).to(dtype)
+        weights = (
+            torch.rand(indices.shape, dtype=torch.float, device=indices.device)
+            if weighted
+            else None
+        )
+        offsets = torch.tensor([0] + np.cumsum(Ls.flatten()).tolist()).to(dtype)
+        warning = torch.tensor([0]).long()
+
+        if mixed_B:
+            B_offsets = torch.tensor(
+                B_offsets, device="cpu", dtype=torch.int32
+            )
+            max_B = max(Bs)
+            vbe_metadata = generate_vbe_metadata(
+                offsets,
+                [[b] for b in Bs],
+                pooling_mode=PoolingMode.SUM,
+                feature_dims_cpu=torch.tensor(
+                    [-1] * T, device="cpu", dtype=torch.int64
+                ),  # unused
+                device=torch.device("cpu"),
+            )
+            B_offsets = vbe_metadata.B_offsets
+            assert isinstance(B_offsets, torch.Tensor), "B_offsets must be tensor"
+            info_B_num_bits, info_B_mask = torch.ops.fbgemm.get_infos_metadata(
+                vbe_metadata.B_offsets,  # unused tensor
+                vbe_metadata.max_B,
+                B_offsets.numel() - 1,  # T
+            )
+            row_output_offsets, b_t_map = torch.ops.fbgemm.generate_vbe_metadata(
+                B_offsets,
+                vbe_metadata.B_offsets_rank_per_feature,
+                vbe_metadata.output_offsets_feature_rank,
+                torch.tensor(
+                    [-1] * (T + 1),
+                    device=torch.device("cpu"),
+                    dtype=torch.int,
+                ),  # unused D_offsets
+                -1,  # unused max_D
+                False,  # nobag
+                vbe_metadata.max_B_feature_rank,
+                info_B_num_bits,
+                offsets.numel() - 1,  # total_B
+            )
+            row_output_offsets = row_output_offsets.npu()
+            b_t_map = b_t_map.npu()
+            B_offsets = B_offsets.npu()
+            vbe_args = {
+                "B_offsets": B_offsets,
+                "max_B": max_B,
+                "b_t_map": b_t_map,
+                "info_B_num_bits": info_B_num_bits,
+                "info_B_mask": info_B_mask,
+            }
+        else:
+            vbe_args = {}
+
+        self.assertEqual(indices.numel(), np.sum(Ls).item())
+        self.assertEqual(offsets[-1], np.sum(Ls).item())
+        indices, offsets, rows_per_table, warning = (
+            indices.npu(),
+            offsets.npu(),
+            rows_per_table.npu(),
+            warning.npu(),
+        )
+        if weighted:
+            weights = weights.npu()
+        indices_copy = indices.clone()
+        offsets_copy = offsets.clone()
+        torch.npu.synchronize()
+        # 测试indices索引在范围内的正常的情况
+        torch.ops.fbgemm.bounds_check_indices(
+            rows_per_table,
+            indices,
+            offsets,
+            bounds_check_mode,
+            warning,
+            weights,
+            bounds_check_version=bounds_check_version,
+            **vbe_args,
+        )
+        torch.npu.synchronize()
+        indices_copy_cpu = indices_copy.cpu()
+        indices_cpu = indices.cpu()
+        torch.testing.assert_close(indices_copy_cpu, indices_cpu)
+        torch.npu.synchronize()
+        # 测试 indices 索引不在范围内的情况
+        indices[:] = torch.iinfo(dtype).max
+        torch.npu.synchronize()
+        if bounds_check_mode != BoundsCheckMode.FATAL:
+            torch.ops.fbgemm.bounds_check_indices(
+                rows_per_table,
+                indices,
+                offsets,
+                bounds_check_mode,
+                warning,
+                weights,
+                bounds_check_version=bounds_check_version,
+                **vbe_args,
+            )
+            torch.npu.synchronize()
+            torch.testing.assert_close(indices, torch.zeros_like(indices))
+            if bounds_check_mode == BoundsCheckMode.WARNING:
+                self.assertEqual(warning.item(), indices.numel())
+
+        # 测试 offsets 边界不正确的情况
+        torch.npu.synchronize()
+        indices.copy_(indices_copy)
+        offsets.copy_(offsets_copy)
+        torch.npu.synchronize()
+        if offsets.numel() > 0:
+            offsets[0] = -100
+        if offsets.numel() > 1:
+            offsets[-1] += 100
+        torch.npu.synchronize()
+        if bounds_check_mode != BoundsCheckMode.FATAL:
+            torch.ops.fbgemm.bounds_check_indices(
+                rows_per_table,
+                indices,
+                offsets,
+                bounds_check_mode,
+                warning,
+                weights,
+                bounds_check_version=bounds_check_version,
+                **vbe_args,
+            )
+            torch.npu.synchronize()
+            if offsets.numel() > 0:
+                self.assertEqual(offsets[0].item(), 0)
+            if offsets.numel() > 1:
+                self.assertEqual(offsets[-1].item(), indices.numel())
+            if bounds_check_mode == BoundsCheckMode.WARNING:
+                # -1 because when we have 2 elements in offsets, we have only 1
+                # warning for the pair.
+                self.assertGreaterEqual(warning.item(), min(2, offsets.numel() - 1))
+
+        # test offsets.size(0) ! = B * T + 1 case. Here we test with T >= 2 case.
+        # If T == 1, we will always get the even division.
+        # (does not apply to mixed_B = True)
+        if not mixed_B and T >= 2:
+            indices = indices_copy.clone()
+            offsets = offsets_copy.clone()
+            offsets = torch.cat(
+                (
+                    offsets,
+                    torch.tensor(
+                        [indices.numel()] * (T - 1),
+                        dtype=offsets.dtype,
+                        device=offsets.device,
+                    ),
+                ),
+                dim=0,
+            )
+            with self.assertRaises(RuntimeError):
+                torch.ops.fbgemm.bounds_check_indices(
+                    rows_per_table,
+                    indices,
+                    offsets,
+                    bounds_check_mode,
+                    warning,
+                    weights,
+                    bounds_check_version=bounds_check_version,
+                )
+
+        # 测试weights和indices的长度不一致的情况
+        weights = torch.rand(
+            (indices.size(0) + 1,), dtype=torch.float, device=indices.device
+        )
+        with self.assertRaises(RuntimeError):
+            torch.ops.fbgemm.bounds_check_indices(
+                rows_per_table,
+                indices,
+                offsets,
+                bounds_check_mode,
+                warning,
+                weights,
+                **vbe_args,
+                bounds_check_version=bounds_check_version,
+            )
 
     @given(
         T=st.integers(min_value=1, max_value=5),

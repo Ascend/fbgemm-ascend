@@ -178,7 +178,7 @@ TORCH_LIBRARY_FRAGMENT(mxrec, m)
         "    Tensor? b_t_map=None, "
         "    int info_B_num_bits=-1, "
         "    int info_B_mask=-1, "
-        "    int bounds_check_version=1 "
+        "    int bounds_check_version=1"
         ") -> ()");
 }
 
