@@ -1,87 +1,106 @@
-# 使用PyTorch框架调用pruned_hashmap_lookup算子
+# pruned_hashmap_lookup
 
-该样例基于 PyTorch 2.7.1 和 Python 3.11.0 运行。
+本算子仅支持NPU调用。通过哈希表进行索引剪枝。
 
-## 编译与部署
+# 目录结构
 
-算子编译与部署请参考 [README.md](../../../README.md) 中 "源码编译与安装" 章节。
-
-## 算子调用示例
-
-```python
-import sysconfig
-import numpy as np
-
-import torch
-import torch_npu
-import fbgemm_gpu
-import fbgemm_ascend
-
-
-LOAD_FACTOR = 0.8
-PRUNING_RATIO = 0.5
-
-DEVICE = "npu:0"
-np.random.seed(42)
-table_num: int = 10
-batch_num: int = 10
-length: int = 100
-param_types: list[torch.dtype] = [torch.int32, torch.int64]
-current_device = torch.device(DEVICE)
-indices_type, hash_table_offsets_type = param_types
-
-# 稀疏索引的值的范围
-sparse_idx_range = int(batch_num * length / (1.0 - PRUNING_RATIO))  
-idx_type_max = torch.iinfo(indices_type).max
-_assume(
-    sparse_idx_range < idx_type_max,
-    f"sparse_idx_range must be less than indices_type:{indices_type} max, "
-    f"indices type max:{idx_type_max}, sparse_idx_range:{sparse_idx_range}.",
-)
-
-# 生成唯一的indices
-indices = torch.empty(size=(table_num, batch_num, length), dtype=indices_type)
-for t in range(table_num):
-    np_table = np.random.choice(
-        np.arange(sparse_idx_range, dtype=np.int64),
-        size=(batch_num, length),
-        replace=False,
-    )
-    indices[t] = torch.tensor(np_table, dtype=indices_type)
-indices = indices.view(-1)
-
-# 创建offsets
-offsets = torch.tensor([length * b_t for b_t in range(batch_num * table_num + 1)]).to(dtype=indices_type)
-
-# 生成致密索引
-dense_idx_range = int(batch_num * length / (1.0 - PRUNING_RATIO + 0.2))  # 致密索引范围小于稀疏索引范围
-dense_indices = (
-    torch.randint(low=0, high=dense_idx_range, size=(table_num, batch_num, length)).view(-1).to(dtype=indices_type)
-)
-
-# 初始化hash_table和对应offsets
-# hash_table 中每个致密索引表的大小
-capacities = [int(batch_num * length / LOAD_FACTOR) for _ in range(table_num)]
-hash_table = torch.full(
-    (sum(capacities), 2),
-    -1,  # 填充-1
-    dtype=indices_type,
-)
-hash_table_offsets = torch.tensor([0] + np.cumsum(capacities).tolist()).to(dtype=hash_table_offsets_type)
-
-# 将生成的dense_indices插入到hash_table中，调用fbgemm的CPU实现
-torch.ops.fbgemm.pruned_hashmap_insert(
-    indices, dense_indices, offsets, hash_table, hash_table_offsets
-)
-
-indices = indices.to(current_device)
-dense_indices = dense_indices.to(current_device)
-offsets = offsets.to(current_device)
-hash_table = hash_table.to(current_device)
-hash_table_offsets = hash_table_offsets.to(current_device)
-
-# 查表致密索引
-dense_indices_lookup = torch.ops.fbgemm.pruned_hashmap_lookup(indices, offsets, hash_table, hash_table_offsets)
+```shell
+-- pruned_hashmap_lookup
+   |-- c310
+      |-- op_host                 # 算子host侧实现
+      |-- op_kernel               # 算子kernel侧实现
+      |-- pruned_hashmap_lookup.json    # 算子原型配置
+      |-- run.sh                  # 算子编译部署脚本
+   |-- pruned_hashmap_lookup.cpp  # 算子PTA层实现
+   |-- README.md               # 算子说明文档
 ```
 
-以上示例仅展示基本用法，如需更全面的测试用例，请参考测试文件：[test](../../../bench/tbe_inference/pruned_hashmap_lookup/test_pruned_hashmap_lookup.py)。
+# 产品支持情况
+
+| 实现目录              | 典型硬件                  |
+| -------------------- | ------------------------ |
+| `c310/`  | Atlas A5训练系列产品  |
+
+# 接口定义
+
+```python
+torch.ops.fbgemm.pruned_hashmap_lookup(indices: torch.Tensor, offsets: torch.Tensor, hash_table: torch.Tensor, hash_table_offsets: torch.Tensor) -> torch.Tensor
+```
+
+# 功能说明
+
+`pruned_hashmap_lookup`算子用于在嵌入表剪枝后的哈希表中查找原始稀疏索引对应的致密索引。
+
+该算子通过哈希查找机制，将原始的稀疏索引映射到经过剪枝优化后的致密索引空间（稀疏索引被剪枝后，输出的致密索引为-1），从而减少内存占用和计算开销，提升推理性能。
+
+## 算子实现原理
+
+将indices中数据按batch区分，并定位到batch所在table对应的哈希表数据，遍历每个索引并使用SIMT多线程线性探测哈希表，查找对应的致密索引。SIMT多线程可以并行处理多个索引，以及并行探测哈希表多个槽位，提高查找效率。
+
+功能逻辑的python伪代码如下：
+
+```python
+def pruned_hashmap_lookup_torch_vectorized(indices, offsets, hash_table, hash_table_offsets):
+    # 计算表数量T和批次数量B
+    T = hash_table_offsets.size(0) - 1  # 表的数量
+    B = (offsets.size(0) - 1) // T      # 每个表的批次数量
+    
+    assert B > 0, "B must be greater than 0"
+    
+    # 初始化输出张量，形状与indices相同，类型与indices相同
+    dense_indices = torch.empty_like(indices)
+    dense_indices.fill_(-1)  # 初始化为-1，表示未找到
+    
+    # 遍历每一个batch
+    for i in range(B):
+        indices_start = offsets[i]
+        indices_end = offsets[i + 1]
+        table_idx = i // B
+        table_indices_start = hash_table_offsets[table_idx]
+        table_indices_end = hash_table_offsets[table_idx + 1]
+
+        # 如果table对应的哈希表数据为空，则表示不进行剪枝，直接输出原稀疏索引
+        if table_indices_start == table_indices_end:
+            for j in range(indices_start, indices_end):
+                dense_indices[j] = indices[j]
+            continue
+        
+        # 遍历batch中每个index
+        for j in range(indices_start, indices_end):
+            sparse_idx = indices[j]
+            for k in range(table_indices_start, table_indices_end):
+                table_sparse_idx = int(hash_table[k, 0].item())
+                table_dense_idx = int(hash_table[k, 1].item())
+                if sparse_idx == table_sparse_idx:
+                    dense_indices[j] = table_dense_idx
+                    break
+        
+    return dense_indices
+```
+
+# 算子输入与输出
+
+| 名称 | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 说明 |
+|---|---|---|---|---|---|
+| indices | 输入 | Tensor | int32/int64 | [T \* B \* L,] | 一维tensor，表示多个表的稀疏索引。其中每个元素为一个稀疏索引，用于在hash_table中查找对应的致密索引。<br>T为表的数量，B为每个表包含多少个batch的index，L为每个batch中index数量。<br>多个表之间，每个表的batch数量必须相同。<br>每个表内的indices索引必须是unique的（单个表内部不能存在重复索引）。<br>不同表可以拥有不同数量的indices，即不同batch的L值可以有差异，但可能会负载不均衡而导致影响性能。 |
+| offsets | 输入 | Tensor | int32/int64 | [T \* B + 1,]  | 一维tensor，表示每个batch对应稀疏索引的偏移。<br>其中第一个元素为0，后续元素为每个batch对应稀疏索引数量的累加和。<br>数据类型和indices一致。 |
+| hash_table | 输入 | Tensor | int32/int64 | [x, 2]  | 二维tensor，表示多个表的稀疏索引和致密索引的映射关系。<br>第二维中，第一个元素表示稀疏索引，第二个元素为稀疏索引对应的致密索引。<br>x需小于int32类型最大值。<br>支持多个致密索引表长度不相等。<br>允许有稀疏表对应的致密索引数量为0，代表不对该表的稀疏索引做剪枝操作，输出的致密索引为原稀疏索引值。<br>hash_table中每个表需要至少一个空槽位（即每个表中至少有一行数据，第二维的第一个元素为-1）。 |
+| hash_table_offsets | 输入 | Tensor | int64 | [T + 1,]  | 一维tensor，表示每个表对应hash_table中致密索引的偏移，长度为表的个数+1。<br>第一个元素为0，后续每个元素为hash_table中每个表的致密索引数量的累加和。<br>其中第i个数据必须<=第i+1个数据，相等时代表该稀疏表对应的致密索引数量为0，表示不对该表的稀疏索引做剪枝操作，输出的致密索引和原稀疏索引相同。 |
+| dense_indices | 输出 | Tensor | int32/int64 | [T \* B \* L,]  | 一维tensor，稀疏索引转换后的致密索引。<br>数据类型和indices一致。 |
+
+# 调用示例
+
+```python
+indices: torch.Tensor
+offsets: torch.Tensor
+hash_table: torch.Tensor  # hash_table 需要使用 torch.ops.fbgemm.pruned_hashmap_insert 接口进行数据填充
+hash_table_offsets: torch.Tensor
+# 注：入参中，参数需满足使用要求，此处不详细展开，具体使用可参考后文中的测试用例。
+dense_indices = torch.ops.fbgemm.pruned_hashmap_lookup(indices, offsets, hash_table, hash_table_offsets)
+```
+
+# 编译与测试
+
+算子编译请参考[README.md](../../../README.md)中"源码编译与安装"章节。
+
+算子基础测试用例请参考[test](../../../test/tbe/utils/split_embeddings_utils_test.py)，更多测试用例参考[pruned_hashmap_lookup_test.py](../../../bench/tbe_inference/pruned_hashmap_lookup/test_pruned_hashmap_lookup.py)。
