@@ -1,0 +1,47 @@
+[
+  {
+    "op": "FloatToHfp8Quantized",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "input",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "fp32"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "output",
+        "param_type": "required",
+        "format": [
+          "ND"
+        ],
+        "type": [
+          "uint8"
+        ]
+      }
+    ],
+    "attr": [
+      {
+        "name": "ebits",
+        "param_type": "required",
+        "type": "int64"
+      },
+      {
+        "name": "exponent_bias",
+        "param_type": "required",
+        "type": "int64"
+      },
+      {
+        "name": "max_pos",
+        "param_type": "required",
+        "type": "float"
+      }
+    ]
+  }
+]
