@@ -21,14 +21,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import sysconfig
-import subprocess
-from typing import Any
-
-import fbgemm_gpu
-import fbgemm_ascend
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
 import torch
 from fbgemm_gpu.permute_pooled_embedding_modules import PermutePooledEmbeddings
+from fbgemm_gpu.permute_pooled_embedding_modules_split import PermutePooledEmbeddingsSplit
 import hypothesis.strategies as st
 from hypothesis import HealthCheck
 from torch import Tensor
@@ -46,22 +43,14 @@ npu_unavailable: tuple[bool, str] = (
 
 
 def cpu_and_maybe_npu() -> st.SearchStrategy:
-    return st.sampled_from(
-        [torch.device("cpu")] + ([torch.device("npu")] if npu_available() else [])
-    )
+    return st.sampled_from([torch.device("cpu")] + ([torch.device("npu")] if npu_available() else []))
 
 
 typed_npu_unavailable: tuple[bool, str] = npu_unavailable
 
 suppressed_list: list[HealthCheck] = (
-    [HealthCheck.not_a_test_method]
-    if getattr(HealthCheck, "not_a_test_method", False)
-    else []
-) + (
-    [HealthCheck.differing_executors]
-    if getattr(HealthCheck, "differing_executors", False)
-    else []
-)
+    [HealthCheck.not_a_test_method] if getattr(HealthCheck, "not_a_test_method", False) else []
+) + ([HealthCheck.differing_executors] if getattr(HealthCheck, "differing_executors", False) else [])
 
 INTERN_MODULE = "fbgemm_gpu.permute_pooled_embedding_modules"
 FIXED_EXTERN_API = {
@@ -88,9 +77,6 @@ FWD_COMPAT_MSG = (
 
 
 class PermutePooledEmbeddingsFwdOnly(PermutePooledEmbeddings):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-
     def __call__(self, pooled_embs: torch.Tensor) -> torch.Tensor:
         result = torch.ops.fbgemm.permute_pooled_embs(
             pooled_embs,
@@ -104,10 +90,49 @@ class PermutePooledEmbeddingsFwdOnly(PermutePooledEmbeddings):
 
 class Net(torch.nn.Module):
     def __init__(self, fwd_only: bool = False) -> None:
-        super(Net, self).__init__()
+        super().__init__()
         self.fc1 = torch.nn.Linear(1, 10, bias=False)
         op_cls = PermutePooledEmbeddingsFwdOnly if fwd_only else PermutePooledEmbeddings
         self.permute_pooled_embeddings: PermutePooledEmbeddings = op_cls(
+            [2, 3, 1, 4],
+            [3, 0, 2, 1],
+        )
+        self.fc2 = torch.nn.Linear(10, 1, bias=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.fc1(x)
+        x = self.permute_pooled_embeddings(x)
+        x = self.fc2(x)
+        return x
+
+
+INTERN_MODULE = "fbgemm_gpu.permute_pooled_embedding_modules_split"
+FIXED_EXTERN_API = {
+    "PermutePooledEmbeddingsSplit": {
+        "__init__": ["self", "embs_dims", "permute", "device"],
+        "forward": ["self", "pooled_embs"],
+    },
+}
+
+
+class PermutePooledEmbeddingsSplitFwdOnly(PermutePooledEmbeddingsSplit):
+    def __call__(self, pooled_embs: torch.Tensor) -> torch.Tensor:
+        result = torch.ops.fbgemm.permute_pooled_embs_split(
+            pooled_embs,
+            self._offset_dim_list.to(device=pooled_embs.device),
+            self._permute.to(device=pooled_embs.device),
+            self._inv_offset_dim_list.to(device=pooled_embs.device),
+            self._inv_permute.to(device=pooled_embs.device),
+        )
+        return result
+
+
+class NetSplit(torch.nn.Module):
+    def __init__(self, fwd_only: bool = False) -> None:
+        super().__init__()
+        self.fc1 = torch.nn.Linear(1, 10, bias=False)
+        op_cls = PermutePooledEmbeddingsSplitFwdOnly if fwd_only else PermutePooledEmbeddingsSplit
+        self.permute_pooled_embeddings: PermutePooledEmbeddingsSplit = op_cls(
             [2, 3, 1, 4],
             [3, 0, 2, 1],
         )
