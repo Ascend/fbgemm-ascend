@@ -22,6 +22,7 @@ set(ASCENDC_A5_ONLY_OPS
     linearize_cache_indices_from_row_idx
     float_to_hfp8_quantized
     hfp8_quantized_to_float
+    direct_mapped_lxu_cache_lookup
 )
 
 set(ASCENDC_A3_OPS
@@ -139,6 +140,7 @@ set(_ASCENDC_OPS
     "bfloat16_quantized_to_float|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/bfloat16_quantized_to_float"
     "float_to_hfp8_quantized|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_to_hfp8_quantized"
     "hfp8_quantized_to_float|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/hfp8_quantized_to_float"
+    "direct_mapped_lxu_cache_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lxu_cache_lookup"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
@@ -227,4 +229,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/quantize_ops/bfloat16_quantized_to_float/bfloat16_quantized_to_float.cpp
     src/quantize_ops/float_to_hfp8_quantized/float_to_hfp8_quantized.cpp
     src/quantize_ops/hfp8_quantized_to_float/hfp8_quantized_to_float.cpp
+    src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/direct_mapped_lxu_cache_lookup.cpp
 )
