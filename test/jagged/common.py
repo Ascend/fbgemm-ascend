@@ -21,14 +21,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import sysconfig
 import itertools
 
 import numpy as np
 import torch
 import hypothesis.strategies as st
-import fbgemm_gpu
-import fbgemm_ascend
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
 
 
 def npu_available() -> bool:
@@ -47,21 +46,71 @@ npu_unavailable: tuple[bool, str] = (
 
 
 def cpu_and_maybe_npu() -> st.SearchStrategy:
-    return st.sampled_from(
-        [torch.device("cpu")] + ([torch.device("npu")] if npu_available() else [])
+    return st.sampled_from([torch.device("cpu")] + ([torch.device("npu")] if npu_available() else []))
+
+
+def lengths_to_segment_ids(lengths: torch.Tensor) -> torch.Tensor:
+    return torch.repeat_interleave(
+        torch._dim_arange(lengths, 0).long(),
+        lengths.long(),
+    )
+
+
+# Converts lengths + values format to COO format
+# [B], [N] -> [B, N'].
+# pyre-ignore Missing return annotation [3]
+def var_list_to_coo_1d(
+    lengths: torch.Tensor,
+    values: torch.Tensor,
+    N: int,
+):
+    rows = lengths_to_segment_ids(lengths)
+    num_rows = lengths.size()[0]
+    # This does D&H sync
+    offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+    output_size = lengths.sum()
+    # This does D&H sync
+    cols = torch.ops.fbgemm.offsets_range(offsets, output_size)
+    indices = torch.stack([rows, cols])
+    dims = [num_rows, N]
+    # torch.sparse_coo_tensor is not supported by torch.fx, wrap it.
+    return torch.sparse_coo_tensor(
+        indices=indices,
+        values=values,
+        size=dims,
+    )
+
+
+# Converts lengths + values format to COO format
+# [B], [N, D] -> [B, N', D].
+# pyre-ignore Missing return annotation [3]
+def var_list_to_coo(lengths: torch.Tensor, values: torch.Tensor, N: int, D: int):
+    rows = lengths_to_segment_ids(lengths)
+    num_rows = lengths.size()[0]
+    offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+    output_size = lengths.sum()
+    # This does D&H sync
+    cols = torch.ops.fbgemm.offsets_range(offsets, output_size)
+    indices = torch.stack([rows, cols])
+    dims = [num_rows, N, D]
+    # torch.sparse_coo_tensor is not supported by torch.fx, wrap it.
+    return torch.sparse_coo_tensor(
+        indices=indices,
+        values=values,
+        size=dims,
     )
 
 
 def generate_jagged_tensor(
-        num_jagged_dim: int,
-        outer_dense_size: int,
-        inner_dense_size: int,
-        dtype: torch.dtype,
-        device: torch.device,
-        fold_inner_dense: bool = False,
-        # dynamo to mark the input as dynamic shape to make sure symbolic
-        # shape is generated
-        mark_dynamic: bool = False,
+    num_jagged_dim: int,
+    outer_dense_size: int,
+    inner_dense_size: int,
+    dtype: torch.dtype,
+    device: torch.device,
+    fold_inner_dense: bool = False,
+    # dynamo to mark the input as dynamic shape to make sure symbolic
+    # shape is generated
+    mark_dynamic: bool = False,
 ) -> tuple[torch.Tensor, list[torch.LongTensor], np.typing.NDArray]:
     max_lengths = np.random.randint(low=1, high=10, size=(num_jagged_dim,))
     x_offsets: list[torch.LongTensor] = []
@@ -100,10 +149,10 @@ def generate_jagged_tensor(
 
 
 def to_padded_dense(
-        values: torch.Tensor,
-        offsets: list[torch.LongTensor],
-        max_lengths: np.typing.NDArray,
-        padding_value: float = 0,
+    values: torch.Tensor,
+    offsets: list[torch.LongTensor],
+    max_lengths: np.typing.NDArray,
+    padding_value: float = 0,
 ) -> torch.Tensor:
     outer_dense_size = len(offsets[0]) - 1
     # canonicalize by unsqueeze the last dim if the inner dense dimension
@@ -114,6 +163,7 @@ def to_padded_dense(
         dtype=values.dtype,
         device=values.device,
     )
+    # fmt: off
     for i in range(outer_dense_size):
         for jagged_coord in itertools.product(
                 *(list(range(max_l)) for max_l in max_lengths)
@@ -132,4 +182,5 @@ def to_padded_dense(
                 if is_zero
                 else values[cur_offset]
             )
+    # fmt: on
     return dense.squeeze(-1) if values.ndim == 1 else dense

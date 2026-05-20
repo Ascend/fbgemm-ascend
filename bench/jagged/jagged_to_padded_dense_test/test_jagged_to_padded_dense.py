@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 # ==============================================================================
 
 import itertools
-import sysconfig
 
 import pytest
 import torch
-import torch_npu
+import torch_npu  # noqa: F401
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
 
-import fbgemm_gpu
-import fbgemm_ascend
 from test_comm_utils import (
     ExecuteConfig,
     Scenario,
@@ -32,7 +31,7 @@ from test_comm_utils import (
     generate_jagged_tensor,
 )
 
-# 设置用的卡号
+# pylint: disable=R0801
 DEVICE = "npu:0"
 
 
@@ -69,32 +68,34 @@ def run_case(params):
     num_heads = params.get("num_heads", 2)
     attention_dim = params.get("attention_dim", 16)
     padding_value = float(params.get("padding_value", 0.0))
-    case_tag = params.get("case_tag", "case")
     data_types = (dtype, torch.int64)
     jagged_tensor, seq_offsets, _ = generate_jagged_tensor(
-        batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types)
+        batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types
+    )
     input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
     offsets_tensor = torch.from_numpy(seq_offsets)
 
+    # fmt: off
     reference_dense = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat,
         [offsets_tensor],
         [max_seq_len],
         padding_value
     )
-    npu_dense = torch.ops.mxrec.jagged_to_padded_dense(
+    npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat.to(DEVICE),
         [offsets_tensor.to(DEVICE)],
         [max_seq_len],
         padding_value
     )
+    # fmt: on
     npu_cpu = npu_dense.cpu()
 
     assert torch.allclose(
         reference_dense.reshape(-1),
         npu_cpu.reshape(-1),
         atol=PRECISION_ERROR_RANGE[dtype],
-        rtol=PRECISION_ERROR_RANGE[dtype]
+        rtol=PRECISION_ERROR_RANGE[dtype],
     ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{reference_dense}\nNPU:\n{npu_cpu}"
 
 
@@ -109,9 +110,7 @@ test_params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*test_params.values())
-])
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*test_params.values())])
 def test_jagged_to_padded_dense(config: ExecuteConfig):
     """
     测试不规则张量到填充密集张量的转换算子
@@ -133,7 +132,8 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
     # 1. 生成测试数据
     data_types = (values_data_type, offsets_data_type)
     jagged_tensor, seq_offsets, total_sequences = generate_jagged_tensor(
-        batch_size, max_seq_len, num_heads, attention_dim, data_types)
+        batch_size, max_seq_len, num_heads, attention_dim, data_types
+    )
 
     # 2. 准备FBGEMM算子输入(需要展平最后两个维度)
     input_flat = jagged_tensor.reshape(total_sequences, num_heads * attention_dim)
@@ -145,23 +145,25 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
         input_flat,
         [fbgemm_offsets],
         [max_seq_len],
-        0.0  # 填充值
+        0.0,  # 填充值
     )
 
     # 4. 调用NPU算子
+    # fmt: off
     npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat.to(DEVICE),
         [fbgemm_offsets.to(DEVICE)],
         [max_seq_len] if use_list_max_lengths else max_seq_len,
         0.0
     )
+    # fmt: on
 
     # 5. 前向传播结果比对
     assert torch.allclose(
         fbgemm_dense.reshape(-1),
         npu_dense.cpu().reshape(-1),
         atol=PRECISION_ERROR_RANGE[values_data_type],
-        rtol=PRECISION_ERROR_RANGE[values_data_type]
+        rtol=PRECISION_ERROR_RANGE[values_data_type],
     ), f"NPU结果与FBGEMM CPU结果不匹配\nFBGEMM:\n{fbgemm_dense}\nNPU:\n{npu_dense.cpu()}"
 
     # ===== 反向传播验证 =====
@@ -170,6 +172,7 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
     input_flat_npu_py = input_flat.clone().float().to(DEVICE).requires_grad_(True)
 
     # 7. 计算NPU前向传播
+    # fmt: off
     npu_dense_for_grad = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat_npu,
         [fbgemm_offsets.to(DEVICE)],
@@ -184,6 +187,7 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
         [max_seq_len],
         0.0
     )
+    # fmt: on
 
     # 9. 生成随机梯度(与输出形状相同)
     grad_output = torch.randn_like(npu_dense_for_grad)
@@ -201,14 +205,12 @@ def test_jagged_to_padded_dense(config: ExecuteConfig):
         npu_py_grad_input.cpu(),
         npu_grad_input.cpu(),
         atol=PRECISION_ERROR_RANGE[values_data_type],
-        rtol=PRECISION_ERROR_RANGE[values_data_type]
+        rtol=PRECISION_ERROR_RANGE[values_data_type],
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
-def test_jagged_to_padded_dense_max_lengths_zero(
-    dtype
-):
+def test_jagged_to_padded_dense_max_lengths_zero(dtype):
     """max_lengths=0 时，NPU 应返回与 FBGEMM CPU 一致的 (B, 0, D) 空 tensor"""
     batch_size = 16
     num_heads = 8
@@ -221,7 +223,7 @@ def test_jagged_to_padded_dense_max_lengths_zero(
     )
     input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
     offsets_tensor = torch.from_numpy(seq_offsets)
-
+    # fmt: off
     reference_dense = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat, [offsets_tensor], [0], padding_value
     )
@@ -229,7 +231,7 @@ def test_jagged_to_padded_dense_max_lengths_zero(
     npu_dense = torch.ops.fbgemm.jagged_to_padded_dense(
         input_flat.to(DEVICE), [offsets_tensor.to(DEVICE)], 0, padding_value
     )
-
+    # fmt: on
     npu_cpu = npu_dense.cpu()
     assert torch.equal(reference_dense, npu_cpu), (
         f"max_lengths=0 时结果不一致\n"
@@ -247,7 +249,7 @@ SCENARIOS = [
             "batch_size": [2, 4],
             "max_seq_len": [64, 128],
             "padding_value": [0.0, -1.0, 1.0, -0.5, 0.5, 1e-6, -1e-6, 100.0, -100.0],
-            "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32]
+            "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32],
         },
     ),
     # 浮点边界场景：小/大 batch 与极端 padding
@@ -260,8 +262,18 @@ SCENARIOS = [
     Scenario(
         scenario_id="fp32_precision",
         base={"dtype": torch.float32, "batch_size": 2, "max_seq_len": 32, "num_heads": 2, "attention_dim": 16},
-        sweep={"padding_value": [1e-10, -1e-10, 1e10, -1e10, 9007199254740991.0, -9007199254740991.0,
-            9007199254740992.0, -9007199254740992.0]},
+        sweep={
+            "padding_value": [
+                1e-10,
+                -1e-10,
+                1e10,
+                -1e10,
+                9007199254740991.0,
+                -9007199254740991.0,
+                9007199254740992.0,
+                -9007199254740992.0,
+            ]
+        },
     ),
     # 浮点维度覆盖：多种 num_heads / attention_dim 组合
     Scenario(
@@ -299,16 +311,9 @@ SCENARIOS = [
     # float→int64 截断：确保 padding 区域写入截断值
     Scenario(
         scenario_id="int64_padding_truncation",
-        base={
-            "dtype": torch.int64,
-            "batch_size": 2,
-            "max_seq_len": 64,
-            "num_heads": 2,
-            "attention_dim": 16
-        },
+        base={"dtype": torch.int64, "batch_size": 2, "max_seq_len": 64, "num_heads": 2, "attention_dim": 16},
         sweep={"padding_value": [3.9, -2.7]},
     ),
-
     # 超大shape测试
     Scenario(
         scenario_id="large_shape_test",
@@ -334,3 +339,6 @@ def test_jagged_to_padded_dense_scenarios(case):
         run = dict(run)
         run.setdefault("case_tag", f"{case['id']}_run{idx}")
         run_case(run)
+
+
+# pylint: enable=R0801

@@ -21,46 +21,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 import unittest
 
-import fbgemm_ascend  # noqa: F401
-import hypothesis.strategies as st
 import numpy as np
 import torch
 from hypothesis import Verbosity, given, settings
+import hypothesis.strategies as st
 
-
-# Converts lengths + values format to COO format
-# [B], [N] -> [B, N'].
-# pyre-ignore Missing return annotation [3]
-def var_list_to_coo_1d(
-    lengths: torch.Tensor,
-    values: torch.Tensor,
-    N: int,
-):
-    # pyre-ignore[21]
-    def lengths_to_segment_ids(lengths: torch.Tensor) -> torch.Tensor:
-        return torch.repeat_interleave(
-            torch._dim_arange(lengths, 0).long(),
-            lengths.long(),
-        )
-
-    rows = lengths_to_segment_ids(lengths)
-    num_rows = lengths.size()[0]
-    # This does D&H sync
-    offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
-    output_size = lengths.sum()
-    # This does D&H sync
-    cols = torch.ops.fbgemm.offsets_range(offsets, output_size)
-    indices = torch.stack([rows, cols])
-    dims = [num_rows, N]
-    # torch.sparse_coo_tensor is not supported by torch.fx, wrap it.
-    return torch.sparse_coo_tensor(
-        indices=indices,
-        values=values,
-        size=dims,
-    )
+from common import var_list_to_coo_1d
 
 
 class Jagged1DToDenseTest(unittest.TestCase):
@@ -86,7 +54,11 @@ class Jagged1DToDenseTest(unittest.TestCase):
         offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
 
         ref_values = torch.randint(low=0, high=1000000000, size=(total_lengths,))
-        ref_values_mask = var_list_to_coo_1d(lengths, torch.ones_like(ref_values), max_sequence_length).to_dense()
+        ref_values_mask = var_list_to_coo_1d(
+            lengths,
+            torch.ones_like(ref_values),
+            max_sequence_length,
+        ).to_dense()
         ref_output_values = (
             var_list_to_coo_1d(
                 lengths,

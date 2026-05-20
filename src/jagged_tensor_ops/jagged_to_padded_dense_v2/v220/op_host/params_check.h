@@ -26,9 +26,7 @@ static bool ValuesCheck(gert::TilingContext* context)
     auto valuesShape = context->GetInputShape(INPUT_INDEX::VALUES)->GetStorageShape();
 
     if (valuesShape.GetDimNum() != SUPPORT_EMBEDDING_DIM_NUM) {
-        OPS_LOG_E("jagged_to_padded_dense_v2",
-                  "Only supports values with dim 2, but got %d",
-                  valuesShape.GetDimNum());
+        OPS_LOG_E("jagged_to_padded_dense_v2", "Only supports values with dim 2, but got %d", valuesShape.GetDimNum());
         return false;
     }
 
@@ -37,9 +35,7 @@ static bool ValuesCheck(gert::TilingContext* context)
     int64_t D = valuesShape.GetDim(1);
 
     if (D > MAX_D) {
-        OPS_LOG_E("jagged_to_padded_dense_v2",
-                  "Only supports values(T, D), where D <= 2048, but got %d",
-                  D);
+        OPS_LOG_E("jagged_to_padded_dense_v2", "Only supports values(T, D), where D <= %d, but got %d", MAX_D, D);
         return false;
     }
     return true;
@@ -57,9 +53,8 @@ static bool OffsetsCheck(gert::TilingContext* context)
     }
 
     if (offsetsCnt < MIN_OFFSETS_CNT || offsetsCnt > MAX_OFFSETS_CNT) {
-        OPS_LOG_E("jagged_to_padded_dense_v2",
-                  "Only supports %d <= len(offsets) <= %d, but got %d",
-                  MIN_OFFSETS_CNT, MAX_OFFSETS_CNT, offsetsCnt);
+        OPS_LOG_E("jagged_to_padded_dense_v2", "Only supports %d <= len(offsets) <= %d, but got %d", MIN_OFFSETS_CNT,
+                  MAX_OFFSETS_CNT, offsetsCnt);
         return false;
     }
 
@@ -67,9 +62,7 @@ static bool OffsetsCheck(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("attrs", context->GetAttrs()->GetListInt(ATTR_INDEX::MAX_LENGTHS), return false);
     size_t maxLengthsCnt = context->GetAttrs()->GetListInt(ATTR_INDEX::MAX_LENGTHS)->GetSize();
     if (offsetsCnt != maxLengthsCnt) {
-        OPS_LOG_E("jagged_to_padded_dense_v2",
-                  "len(offsets), %d != len(max_lengths), %d",
-                  offsetsCnt, maxLengthsCnt);
+        OPS_LOG_E("jagged_to_padded_dense_v2", "len(offsets), %d != len(max_lengths), %d", offsetsCnt, maxLengthsCnt);
         return false;
     }
 

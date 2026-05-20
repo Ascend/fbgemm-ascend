@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+# Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 import itertools
-import sysconfig
 
 import pytest
 import torch
-import torch_npu
+import torch_npu  # noqa: F401
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
 
-import fbgemm_gpu
-import fbgemm_ascend
 from test_comm_utils import (
     ExecuteConfig,
     Scenario,
@@ -31,54 +29,41 @@ from test_comm_utils import (
     generate_jagged_tensor,
 )
 
+# pylint: disable=R0801
 DEVICE = "npu:0"
 
 
-def jagged_2d_to_dense_wrapper(values, offsets, max_lengths, is_mxrec):
-    return Jagged2DToDense.apply(values, offsets, max_lengths, is_mxrec)
+def jagged_2d_to_dense_wrapper(values, offsets, max_lengths):
+    return Jagged2DToDense.apply(values, offsets, max_lengths)
 
 
 class Jagged2DToDense(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, values, offsets, max_lengths, is_mxrec):
+    def forward(ctx, values, offsets, max_lengths):
         offsets_tensor = offsets[0] if isinstance(offsets, (list, tuple)) else offsets
         ctx.save_for_backward(offsets_tensor)
         ctx.total_L = values.shape[0]
-        ctx.is_mxrec = is_mxrec
         max_sequence_length = max(max_lengths)
 
-        if is_mxrec:
-            return torch.ops.mxrec.jagged_2d_to_dense(
-                values=values.to(DEVICE),
-                offsets=offsets_tensor.to(DEVICE),
-                max_sequence_length=max_sequence_length,
-            )
-        else:
-            return torch.ops.fbgemm.jagged_2d_to_dense(
-                values=values.to(DEVICE),
-                offsets=offsets_tensor.to(DEVICE),
-                max_sequence_length=max_sequence_length,
-            )
+        return torch.ops.fbgemm.jagged_2d_to_dense(
+            values=values.to(DEVICE),
+            offsets=offsets_tensor.to(DEVICE),
+            max_sequence_length=max_sequence_length,
+        )
 
     @staticmethod
     def backward(ctx, grad_output):
         offsets = list(ctx.saved_tensors)
         total_L = ctx.total_L
-        is_mxrec = ctx.is_mxrec
         if total_L is None:
             total_L = offsets[0][-1].item()
-        if is_mxrec:
-            grad_values = torch.ops.mxrec.jagged_to_padded_dense_backward(
-                grad_output.to(DEVICE),
-                [offsets[0].to(DEVICE)],
-                total_L
-            )
-        else:
-            grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(
-                grad_output.to(DEVICE),
-                [offsets[0].to(DEVICE)],
-                total_L
-            )
+        # fmt: off
+        grad_values = torch.ops.fbgemm.jagged_to_padded_dense_backward(
+            grad_output.to(DEVICE),
+            [offsets[0].to(DEVICE)],
+            total_L
+        )
+        # fmt: on
         return grad_values, None, None, None, None
 
 
@@ -90,20 +75,22 @@ def run_case(params):
     attention_dim = params.get("attention_dim", 16)
     data_types = (dtype, torch.int64)
     jagged_tensor, seq_offsets, _ = generate_jagged_tensor(
-        batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types)
+        batch_size, max_seq_len, num_heads, attention_dim, data_types=data_types
+    )
     input_flat = jagged_tensor.reshape(jagged_tensor.shape[0], -1)
     offsets_tensor = torch.from_numpy(seq_offsets)
-
+    # fmt: off
     reference_dense = torch.ops.fbgemm.jagged_2d_to_dense(
         input_flat,
         offsets_tensor,
         max_seq_len
     )
-    npu_dense = torch.ops.mxrec.jagged_2d_to_dense(
+    npu_dense = torch.ops.fbgemm.jagged_2d_to_dense(
         input_flat.to(DEVICE),
         offsets_tensor.to(DEVICE),
         max_seq_len
     )
+    # fmt: on
     npu_cpu = npu_dense.cpu()
 
     assert torch.equal(
@@ -123,11 +110,8 @@ test_params = {
 }
 
 
-@pytest.mark.parametrize("config", [
-    ExecuteConfig(*v) for v in itertools.product(*test_params.values())
-])
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
+@pytest.mark.parametrize("config", [ExecuteConfig(*v) for v in itertools.product(*test_params.values())])
+def test_jagged_2d_to_dense(config: ExecuteConfig):
     """
     测试不规则张量到填充密集张量的转换算子
     测试逻辑:
@@ -147,7 +131,8 @@ def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
     # 1. 生成测试数据
     data_types = (values_data_type, offsets_data_type)
     jagged_tensor, seq_offsets, total_sequences = generate_jagged_tensor(
-        batch_size, max_seq_len, num_heads, attention_dim, data_types)
+        batch_size, max_seq_len, num_heads, attention_dim, data_types
+    )
 
     # 2. 准备FBGEMM算子输入(需要展平最后两个维度)
     input_flat = jagged_tensor.reshape(total_sequences, num_heads * attention_dim)
@@ -155,6 +140,7 @@ def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
 
     # ===== 前向传播验证 =====
     # 3. 调用FBGEMM CPU实现
+    # fmt: off
     fbgemm_dense = torch.ops.fbgemm.jagged_2d_to_dense(
         input_flat,
         fbgemm_offsets,
@@ -162,18 +148,12 @@ def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
     )
 
     # 4. 调用NPU算子
-    if is_mxrec:
-        npu_dense = torch.ops.mxrec.jagged_2d_to_dense(
-            input_flat.to(DEVICE),
-            fbgemm_offsets.to(DEVICE),
-            max_seq_len
-        )
-    else:
-        npu_dense = torch.ops.fbgemm.jagged_2d_to_dense(
-            input_flat.to(DEVICE),
-            fbgemm_offsets.to(DEVICE),
-            max_seq_len
-        )
+    npu_dense = torch.ops.fbgemm.jagged_2d_to_dense(
+        input_flat.to(DEVICE),
+        fbgemm_offsets.to(DEVICE),
+        max_seq_len
+    )
+    # fmt: on
 
     # 5. 前向传播结果比对
     assert torch.equal(
@@ -187,26 +167,20 @@ def test_jagged_2d_to_dense(config: ExecuteConfig, is_mxrec: bool):
     input_flat_npu_py = input_flat.clone().float().to(DEVICE).requires_grad_(True)
 
     # 7. 计算NPU前向传播
-    if is_mxrec:
-        npu_dense_for_grad = torch.ops.mxrec.jagged_2d_to_dense(
-            input_flat_npu,
-            fbgemm_offsets.to(DEVICE),
-            max_seq_len
-        )
-    else:
-        npu_dense_for_grad = torch.ops.fbgemm.jagged_2d_to_dense(
-            input_flat_npu,
-            fbgemm_offsets.to(DEVICE),
-            max_seq_len
-        )
+    # fmt: off
+    npu_dense_for_grad = torch.ops.fbgemm.jagged_2d_to_dense(
+        input_flat_npu,
+        fbgemm_offsets.to(DEVICE),
+        max_seq_len
+    )
 
     # 8. 计算NPU python实现前向传播
     npu_py_dense_for_grad = jagged_2d_to_dense_wrapper(
         input_flat_npu_py,
         [fbgemm_offsets.to(DEVICE)],
-        [max_seq_len],
-        is_mxrec
+        [max_seq_len]
     )
+    # fmt: on
 
     # 9. 生成随机梯度(与输出形状相同)
     grad_output = torch.randn_like(npu_dense_for_grad)
@@ -234,7 +208,7 @@ SCENARIOS = [
         sweep={
             "batch_size": [2, 4],
             "max_seq_len": [64, 128],
-            "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32]
+            "dtype": [torch.float32, torch.int64, torch.float16, torch.bfloat16, torch.int32],
         },
     ),
     # 浮点边界场景：小/大 batch 与极端 max_seq_len
@@ -294,3 +268,5 @@ def test_jagged_2d_to_dense_scenarios(case):
         run.setdefault("case_tag", f"{case['id']}_run{idx}")
         run_case(run)
 
+
+# pylint: enable=R0801
