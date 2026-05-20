@@ -1,0 +1,46 @@
+[
+  {
+    "op": "DirectMappedLxuCacheLookup",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "linear_cache_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int32"]
+      },
+      {
+        "name": "lxu_cache_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "invalid_index",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "gather_cache_stats",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["bool", "bool"]
+      },
+      {
+        "name": "uvm_cache_stats",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "output",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int32"]
+      }
+    ]
+  }
+]
