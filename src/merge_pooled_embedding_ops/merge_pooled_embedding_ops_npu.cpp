@@ -1,5 +1,5 @@
 /**
- * 
+ *
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
  * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
@@ -236,8 +236,8 @@ void allToOne(const std::vector<Tensor>& inputTensors, std::vector<Tensor>& outp
             auto& dst = outputTensors[i];
             c10_npu::set_device(deviceId);
             err = aclrtMemcpyAsync(dst.mutable_data_ptr(), dst.size(0) * dst.element_size() * dst.size(1),
-                                        src.const_data_ptr(), src.size(0) * src.element_size() * src.size(1),
-                                        aclrtMemcpyKind::ACL_MEMCPY_DEVICE_TO_DEVICE, copyStream);
+                                   src.const_data_ptr(), src.size(0) * src.element_size() * src.size(1),
+                                   aclrtMemcpyKind::ACL_MEMCPY_DEVICE_TO_DEVICE, copyStream);
             TORCH_CHECK(err == ACL_SUCCESS, "dst src aclrtMemcpyAsync failed, ret: ", err);
         }
     }
@@ -271,7 +271,7 @@ void allToOne(const std::vector<Tensor>& inputTensors, std::vector<Tensor>& outp
             if (src.device() == targetDevice) {
                 auto& dst = outputTensors[i];
                 auto copyStream = c10_npu::getCurrentNPUStream(targetDeviceIndex);
-                
+
                 auto err = aclrtMemcpyAsync(dst.mutable_data_ptr(), dst.size(0) * dst.element_size() * dst.size(1),
                                             src.const_data_ptr(), src.size(0) * src.element_size() * src.size(1),
                                             aclrtMemcpyKind::ACL_MEMCPY_DEVICE_TO_DEVICE, copyStream);
@@ -312,7 +312,243 @@ std::vector<Tensor> allToOneDeviceImplNpu(std::vector<Tensor> inputTensors, at::
     return outputTensors;
 }
 
+namespace {
+
+// 为merge_pooled_embeddings实现allToOne接口，采用copy_替代aclrtMemcpyAsync，因为outputTensors是非连续
+void allToOneMerge(const std::vector<Tensor>& inputTensors, std::vector<Tensor>& outputTensors, at::Device targetDevice,
+                   bool skipIfSameDevice)
+{
+    if (targetDevice.is_cpu()) {
+        allToOneTargetCpu(inputTensors, outputTensors);
+        return;
+    }
+
+    auto numNpus = c10_npu::device_count();
+
+    auto targetDeviceIndex = targetDevice.index();
+    TORCH_CHECK(targetDeviceIndex != -1, "targetDevice.index() is -1. Please pass targetDevice with device "
+                                         "index, e.g., torch.device(\"npu:0\")");
+    TORCH_CHECK(targetDeviceIndex < numNpus);
+    std::vector<TwoHopTransferContainer> twoHopTransfers;
+    twoHopTransfers.reserve(inputTensors.size());
+    std::vector<bool> isTwoHopTransfer;
+    isTwoHopTransfer.reserve(inputTensors.size());
+
+    static auto intermediateNodes = getIntermediateNode(fbgemm_ascend::getAscendLinkMatrix());
+    aclError err = ACL_SUCCESS;
+    for (const auto i : c10::irange(inputTensors.size())) {
+        const auto& src = inputTensors.at(i);
+        auto srcDeviceId = src.get_device();
+        auto intermediateNode = intermediateNodes(srcDeviceId, targetDeviceIndex);
+        if (intermediateNode != -1) {
+            // 创建中间tensor，后续从中间tensor再复制到目标设备
+            Tensor dst = at::empty_like(src, src.options().device(at::Device(at::kPrivateUse1, intermediateNode)));
+            auto copyStream = c10_npu::getCurrentNPUStream(srcDeviceId);
+            // NPUEvent record block机制暂不支持，采用同步流方式实现
+            aclrtSynchronizeStream(c10_npu::getCurrentNPUStream(intermediateNode));
+            aclrtSynchronizeStream(copyStream);
+            twoHopTransfers.push_back({.intermediateTensor = dst, .outputIdx = i});
+            c10_npu::set_device(srcDeviceId);
+            err = aclrtMemcpyAsync(dst.mutable_data_ptr(), dst.size(0) * dst.element_size() * dst.size(1),
+                                   src.const_data_ptr(), src.size(0) * src.element_size() * src.size(1),
+                                   aclrtMemcpyKind::ACL_MEMCPY_DEVICE_TO_DEVICE, copyStream);
+            TORCH_CHECK(err == ACL_SUCCESS, "aclrtMemcpyAsync failed, ret: ", err);
+            isTwoHopTransfer.push_back(true);
+        } else {
+            isTwoHopTransfer.push_back(false);
+        }
+    }
+
+    for (const auto deviceId : c10::irange(numNpus)) {
+        auto srcDevice = at::Device(at::kPrivateUse1, deviceId);
+        if (srcDevice == targetDevice) {
+            continue;
+        }
+
+        auto copyStream = c10_npu::getCurrentNPUStream(deviceId);
+        // NPUEvent record block机制暂不支持，采用同步流方式实现
+        aclrtSynchronizeStream(c10_npu::getCurrentNPUStream(targetDeviceIndex));
+        aclrtSynchronizeStream(copyStream);
+        for (const auto i : c10::irange(inputTensors.size())) {
+            const auto metadata = isTwoHopTransfer.at(i);
+            if (metadata) {
+                continue;
+            }
+
+            auto& src = inputTensors[i];
+            if (src.device() != srcDevice) {
+                continue;
+            }
+            auto& dst = outputTensors[i];
+            // 使用 PyTorch copy_ 替代 aclrtMemcpyAsync，因为 outputTensors[i] 是 view（非连续）
+            c10_npu::set_device(deviceId);
+            dst.copy_(src, true);
+        }
+    }
+
+    for (auto& twoHopTransfer : twoHopTransfers) {
+        // 中间tensor传到targetDevice
+        const auto& src = twoHopTransfer.intermediateTensor;
+        const auto srcDeviceId = src.get_device();
+        const auto srcDevice = at::Device(at::kPrivateUse1, srcDeviceId);
+        if (srcDevice == targetDevice) {
+            continue;
+        }
+
+        auto copyStream = c10_npu::getCurrentNPUStream(srcDeviceId);
+
+        // NPUEvent record block机制暂不支持，采用同步流方式实现
+        aclrtSynchronizeStream(c10_npu::getCurrentNPUStream(targetDeviceIndex));
+        aclrtSynchronizeStream(copyStream);
+        const auto outputIndex = twoHopTransfer.outputIdx;
+        auto& dst = outputTensors.at(outputIndex);
+        // 使用 PyTorch copy_ 替代 aclrtMemcpyAsync，因为 outputTensors 是 view
+        c10_npu::set_device(srcDeviceId);
+        dst.copy_(src, true);
+    }
+
+    if (!skipIfSameDevice) {
+        for (const auto i : c10::irange(inputTensors.size())) {
+            auto& src = inputTensors[i];
+            if (src.device() == targetDevice) {
+                auto& dst = outputTensors[i];
+                dst.copy_(src, true);
+            }
+        }
+        c10_npu::getCurrentNPUStream(targetDeviceIndex).synchronize();
+    }
+
+    for (const auto deviceId : c10::irange(numNpus)) {
+        if (deviceId != targetDeviceIndex) {
+            // NPUEvent record block机制暂不支持，采用同步流方式实现
+            auto srcDevice = at::Device(at::kPrivateUse1, deviceId);
+            auto copyStream = c10_npu::getCurrentNPUStream(deviceId);
+            aclrtSynchronizeStream(c10_npu::getCurrentNPUStream(targetDeviceIndex));
+            aclrtSynchronizeStream(copyStream);
+        }
+    }
+}
+
+std::vector<Tensor> allToOneMergeDeviceImplNpu(std::vector<Tensor> inputTensors, at::Device targetDevice)
+{
+    if (!targetDevice.is_cpu()) {
+        InitP2PAccess(inputTensors, targetDevice);
+        c10_npu::NPUGuard guard(targetDevice);
+    }
+
+    std::vector<Tensor> outputTensors;
+    outputTensors.reserve(inputTensors.size());
+    for (const auto& tensor : inputTensors) {
+        TORCH_CHECK(
+            tensor.device().type() == at::kPrivateUse1,
+            "input tensor must be on NPU device, but got device type: ", static_cast<int>(tensor.device().type()));
+        outputTensors.push_back(tensor.device() != targetDevice
+                                    ? at::empty(tensor.sizes(), tensor.options().device(targetDevice))
+                                    : tensor);
+    }
+    allToOneMerge(inputTensors, outputTensors, targetDevice, true);
+    return outputTensors;
+}
+
+std::tuple<std::array<int64_t, 2>, std::vector<int64_t>, int64_t> catDim2dOutputShape(std::vector<Tensor>& tensors,
+                                                                                      int64_t uncatDimSize,
+                                                                                      int64_t catDim)
+{
+    TORCH_CHECK(!tensors.empty());
+
+    TORCH_CHECK(catDim >= 0 && catDim <= 1);
+
+    int64_t totalCatDim = 0;
+    std::vector<int64_t> cumulativeDims;
+    cumulativeDims.push_back(0);
+    for (const auto& t : tensors) {
+        TORCH_CHECK(t.dim() == 2);
+        TORCH_CHECK(t.size(1 - catDim) == uncatDimSize, "cat dim does not match, ", "compare tensor dim = ", 1 - catDim,
+                    ", expect size = ", uncatDimSize, ", but got size = ", t.size(1 - catDim), " on device ",
+                    t.get_device());
+        totalCatDim += t.size(catDim);
+        cumulativeDims.push_back(totalCatDim);
+    }
+
+    std::array<int64_t, 2> outputShape;
+    if (catDim == 0) {
+        outputShape = {totalCatDim, uncatDimSize};
+    } else {
+        outputShape = {uncatDimSize, totalCatDim};
+    }
+
+    return std::make_tuple(outputShape, cumulativeDims, totalCatDim);
+}
+
+Tensor catDim2d(std::vector<Tensor>& tensors, int64_t uncatDimSize, at::Device outputDevice, int64_t catDim = 1)
+{
+    if (tensors.empty()) {
+        return at::empty({0}, at::TensorOptions().device(outputDevice));
+    }
+
+    // 检查所有 tensor 是否已经在目标设备上
+    bool allOnTarget = true;
+    for (const auto& t : tensors) {
+        if (t.device() != outputDevice) {
+            allOnTarget = false;
+            break;
+        }
+    }
+
+    // 如果所有 tensor 已经在目标设备上，直接 cat
+    if (allOnTarget) {
+        return at::cat(tensors, catDim);
+    }
+
+    // NPU 目标设备：先把所有 tensor 汇聚到目标设备
+    InitP2PAccess(tensors, outputDevice);
+    std::vector<Tensor> gatheredTensors;
+    gatheredTensors.reserve(tensors.size());
+    for (const auto& t : tensors) {
+        if (t.device() == outputDevice) {
+            gatheredTensors.push_back(t);
+        } else {
+            // 使用 allToOneMergeDeviceImplNpu 将数据拷贝到目标设备
+            std::vector<Tensor> singleInput = {t};
+            auto result = allToOneMergeDeviceImplNpu(singleInput, outputDevice);
+            gatheredTensors.push_back(result[0]);
+        }
+    }
+
+    return at::cat(gatheredTensors, catDim);
+}
+
+}  // namespace
+
+Tensor mergePooledEmbeddingsImplNpu(std::vector<Tensor> pooledEmbeddings, int64_t uncatDimSize, at::Device targetDevice,
+                                    int64_t catDim = 1)
+{
+    TORCH_CHECK(!pooledEmbeddings.empty());
+
+    at::Device outDevice = targetDevice;
+
+    bool isSameDevice = true;
+    for (const auto& t : pooledEmbeddings) {
+        if (t.device() != targetDevice) {
+            isSameDevice = false;
+            break;
+        }
+    }
+    if (isSameDevice) {
+        return at::cat(pooledEmbeddings, catDim);
+    }
+
+    if (!targetDevice.is_cpu()) {
+        InitP2PAccess(pooledEmbeddings, targetDevice);
+        c10_npu::NPUGuard g(targetDevice);
+        outDevice = targetDevice.index() == -1 ? at::Device(at::kPrivateUse1, c10_npu::current_device()) : targetDevice;
+    }
+
+    return catDim2d(pooledEmbeddings, uncatDimSize, outDevice, catDim);
+}
+
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
     m.impl("all_to_one_device", &allToOneDeviceImplNpu);
+    m.impl("merge_pooled_embeddings", &mergePooledEmbeddingsImplNpu);
 }
