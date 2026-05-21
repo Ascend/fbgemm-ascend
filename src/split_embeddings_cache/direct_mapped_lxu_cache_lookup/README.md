@@ -48,13 +48,15 @@ result = [0, 1, -1, 2]
 | --- | --- | --- |---------------------------------------------------|
 | `linear_cache_indices` | 输入 | `Tensor[int64/int32]` | 待查找的原始线性索引                                        |
 | `lxu_cache_state` | 输入 | `Tensor[int64]` | 缓存状态表，记录当前缓存中存放的原始索引及其对应的槽位信息                     |
-| `invalid_index` | 输入 | `int64` | 哨兵值，当出现该index时，跳过查询                               |
-| `gather_cache_stats` | 输入 | `bool` | 是否收集缓存命中/未命中的统计信息                                 |
+| `invalid_index` | 输入 | `int64` | 哨兵值，当出现该index时，跳过查询；默认为-1                         |
+| `gather_cache_stats` | 输入 | `bool` | 是否收集缓存命中/未命中的统计信息；默认为false                        |
 | `uvm_cache_stats` | 输入 | `Tensor[int32]` | 可选，当 gather_cache_stats=true 时提供，用于存放统计结果的 tensor |
 | -- | 输出 | `Tensor[int64/int32]` | 每个输入索引对应的缓存槽位位置（slot）；若索引不在缓存中，则对应位置返回 invalid_index |
 
 
 - 输入必须位于 NPU 上
+- 如果打开gather_cache_stats，那么必须提供uvm_cache_stats
+- gather_cache_stats当前仅支持false，目前暂不支持uvm相关功能。故gather_cache_stats和uvm_cache_stats当前为保留参数，暂不支持相关功能
 
 ## 调用示例
 
