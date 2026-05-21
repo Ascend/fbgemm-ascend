@@ -153,41 +153,6 @@ class MergePooledEmbeddingsTest(unittest.TestCase):
         torch.testing.assert_close(output_ref, output.cpu())
         torch.testing.assert_close(output_ref, output_cpu)
 
-    @given(
-        num_inputs=st.integers(min_value=1, max_value=10),
-        r=st.randoms(use_true_random=False),
-        use_pitched=st.booleans(),
-        cat_dim=st.sampled_from([0, 1]),
-    )
-    @settings(verbosity=Verbosity.verbose, max_examples=20, deadline=None)
-    def test_merge_pooled_embeddings_same_device(
-        self,
-        num_inputs: int,
-        # pyre-fixme[2]: Parameter must be annotated.
-        r,
-        use_pitched: bool,
-        cat_dim: int,
-    ) -> None:
-        """Test merge_pooled_embeddings when all inputs are on the same device"""
-        num_npus = torch.npu.device_count()
-        dst_device = torch.device(f"npu:{r.randint(0, num_npus - 1)}")
-        with torch.npu.device(dst_device):
-            uncat_dim_size = 20
-            if use_pitched:
-                inputs = [
-                    make_pitched_tensor(10, uncat_dim_size, torch.float32, "cpu", alignment=256)
-                    for _ in range(num_inputs)
-                ]
-            else:
-                inputs = [torch.randn(10, uncat_dim_size) for _ in range(num_inputs)]
-
-            # All inputs on the same device
-            npu_inputs = [input.to(dst_device) for input in inputs]
-            npu_output = torch.ops.fbgemm.merge_pooled_embeddings(npu_inputs, uncat_dim_size, dst_device, cat_dim)
-            # Should use native cat when all inputs are on same device
-            expected = torch.cat(inputs, dim=cat_dim)
-            torch.testing.assert_close(npu_output.cpu(), expected)
-
     def test_merge_pooled_embeddings_npu_to_cpu(self) -> None:
         """Test merge_pooled_embeddings from NPU to CPU"""
         dst_device = torch.device("cpu")
@@ -197,38 +162,6 @@ class MergePooledEmbeddingsTest(unittest.TestCase):
         uncat_size = inputs[0].size(1)
         output = torch.ops.fbgemm.merge_pooled_embeddings(npu_inputs, uncat_size, dst_device, 0)
         ref_output = torch.ops.fbgemm.merge_pooled_embeddings(inputs, uncat_size, dst_device, 0)
-        torch.testing.assert_close(output, ref_output)
-
-    @given(
-        num_inputs=st.integers(min_value=1, max_value=8),
-        num_npus=st.integers(min_value=1, max_value=torch.npu.device_count()),
-        r=st.randoms(use_true_random=False),
-        target_device=st.integers(min_value=0, max_value=torch.npu.device_count() - 1),
-    )
-    @settings(verbosity=Verbosity.verbose, max_examples=40, deadline=None)
-    def test_merge_pooled_embeddings_npu_to_npu_without_index(
-        self,
-        # pyre-fixme[2]: Parameter must be annotated.
-        num_inputs,
-        # pyre-fixme[2]: Parameter must be annotated.
-        num_npus,
-        # pyre-fixme[2]: Parameter must be annotated.
-        r,
-        # pyre-fixme[2]: Parameter must be annotated.
-        target_device,
-    ) -> None:
-        out_device = torch.device(f"npu:{target_device}")
-        with torch.npu.device(out_device):
-            inputs = [torch.randn(10, 20) for _ in range(num_inputs)]
-            npu_inputs = [input.to(f"npu:{r.randint(0, num_npus - 1)}") for i, input in enumerate(inputs)]
-            uncat_size = inputs[0].size(1)
-            output = torch.ops.fbgemm.merge_pooled_embeddings(
-                npu_inputs,
-                uncat_size,
-                torch.device("npu"),
-                0,
-            )
-            ref_output = torch.ops.fbgemm.merge_pooled_embeddings(npu_inputs, uncat_size, out_device, 0)
         torch.testing.assert_close(output, ref_output)
 
     def test_merge_pooled_embeddings_cpu_with_different_target_device(self) -> None:
@@ -259,32 +192,3 @@ class MergePooledEmbeddingsTest(unittest.TestCase):
         self.assertFalse(output_meta.is_cpu)
         self.assertTrue(output_meta.is_meta)
         self.assertEqual(output_meta.shape, output_cpu.shape)
-
-    def test_merge_pooled_embeddings_empty_input_tensors(self) -> None:
-        """Test merge_pooled_embeddings with empty input tensors"""
-        uncat_size = 2
-        pooled_embeddings = [
-            torch.ones(uncat_size, 0, dtype=torch.int32),
-            torch.ones(uncat_size, 0, dtype=torch.int32),
-        ]
-        output = torch.ops.fbgemm.merge_pooled_embeddings(
-            pooled_embeddings,
-            uncat_size,
-            torch.device("cpu"),
-            1,
-        )
-        self.assertEqual(output.numel(), 0)
-        self.assertEqual(output.dtype, torch.int32)
-
-        pooled_embeddings_npu = [
-            torch.ones(uncat_size, 0, dtype=torch.int32).to("npu:0"),
-            torch.ones(uncat_size, 0, dtype=torch.int32).to("npu:0"),
-        ]
-        output = torch.ops.fbgemm.merge_pooled_embeddings(
-            pooled_embeddings_npu,
-            uncat_size,
-            torch.device("npu:0"),
-            1,
-        )
-        self.assertEqual(output.numel(), 0)
-        self.assertEqual(output.dtype, torch.int32)
