@@ -44,13 +44,13 @@ def pruned_hashmap_lookup_torch_vectorized(indices, offsets, hash_table, hash_ta
     # 计算表数量T和批次数量B
     T = hash_table_offsets.size(0) - 1  # 表的数量
     B = (offsets.size(0) - 1) // T      # 每个表的批次数量
-    
+
     assert B > 0, "B must be greater than 0"
-    
+
     # 初始化输出张量，形状与indices相同，类型与indices相同
     dense_indices = torch.empty_like(indices)
     dense_indices.fill_(-1)  # 初始化为-1，表示未找到
-    
+
     # 遍历每一个batch
     for i in range(B):
         indices_start = offsets[i]
@@ -64,7 +64,7 @@ def pruned_hashmap_lookup_torch_vectorized(indices, offsets, hash_table, hash_ta
             for j in range(indices_start, indices_end):
                 dense_indices[j] = indices[j]
             continue
-        
+
         # 遍历batch中每个index
         for j in range(indices_start, indices_end):
             sparse_idx = indices[j]
@@ -74,7 +74,7 @@ def pruned_hashmap_lookup_torch_vectorized(indices, offsets, hash_table, hash_ta
                 if sparse_idx == table_sparse_idx:
                     dense_indices[j] = table_dense_idx
                     break
-        
+
     return dense_indices
 ```
 
@@ -82,7 +82,7 @@ def pruned_hashmap_lookup_torch_vectorized(indices, offsets, hash_table, hash_ta
 
 | 名称 | 输入/输出 | 参数类型 | 数据类型 | 数据格式 | 说明 |
 |---|---|---|---|---|---|
-| indices | 输入 | Tensor | int32/int64 | [T \* B \* L,] | 一维tensor，表示多个表的稀疏索引。其中每个元素为一个稀疏索引，用于在hash_table中查找对应的致密索引。<br>T为表的数量，B为每个表包含多少个batch的index，L为每个batch中index数量。<br>多个表之间，每个表的batch数量必须相同。<br>每个表内的indices索引必须是unique的（单个表内部不能存在重复索引）。<br>不同表可以拥有不同数量的indices，即不同batch的L值可以有差异，但可能会负载不均衡而导致影响性能。 |
+| indices | 输入 | Tensor | int32/int64 | [T \* B \* L,] | 一维tensor，表示多个表的稀疏索引。其中每个元素为一个稀疏索引，用于在hash_table中查找对应的致密索引。<br>索引值需要大于等于0。 <br>T为表的数量，B为每个表包含多少个batch的index，L为每个batch中index数量。<br>多个表之间，每个表的batch数量必须相同。<br>每个表内的indices索引必须是unique的（单个表内部不能存在重复索引）。<br>不同表可以拥有不同数量的indices，即不同batch的L值可以有差异，但可能会负载不均衡而导致影响性能。 |
 | offsets | 输入 | Tensor | int32/int64 | [T \* B + 1,]  | 一维tensor，表示每个batch对应稀疏索引的偏移。<br>其中第一个元素为0，后续元素为每个batch对应稀疏索引数量的累加和。<br>数据类型和indices一致。 |
 | hash_table | 输入 | Tensor | int32/int64 | [x, 2]  | 二维tensor，表示多个表的稀疏索引和致密索引的映射关系。<br>第二维中，第一个元素表示稀疏索引，第二个元素为稀疏索引对应的致密索引。<br>x需小于int32类型最大值。<br>支持多个致密索引表长度不相等。<br>允许有稀疏表对应的致密索引数量为0，代表不对该表的稀疏索引做剪枝操作，输出的致密索引为原稀疏索引值。<br>hash_table中每个表需要至少一个空槽位（即每个表中至少有一行数据，第二维的第一个元素为-1）。 |
 | hash_table_offsets | 输入 | Tensor | int64 | [T + 1,]  | 一维tensor，表示每个表对应hash_table中致密索引的偏移，长度为表的个数+1。<br>第一个元素为0，后续每个元素为hash_table中每个表的致密索引数量的累加和。<br>其中第i个数据必须<=第i+1个数据，相等时代表该稀疏表对应的致密索引数量为0，表示不对该表的稀疏索引做剪枝操作，输出的致密索引和原稀疏索引相同。 |

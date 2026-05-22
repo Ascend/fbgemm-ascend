@@ -86,9 +86,7 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
     ) -> None:
         if not torch.npu.is_available():
             self.skipTest("npu not available")
-        rows_per_table = torch.tensor(
-            np.random.randint(low=1, high=1000, size=(T,))
-        ).long()
+        rows_per_table = torch.tensor(np.random.randint(low=1, high=1000, size=(T,))).long()
         if not mixed_B:
             Bs = [B] * T
         else:
@@ -109,26 +107,18 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
             for t in range(T)
         ]
         indices = torch.tensor(np.concatenate(indices, axis=0)).to(dtype)
-        weights = (
-            torch.rand(indices.shape, dtype=torch.float, device=indices.device)
-            if weighted
-            else None
-        )
+        weights = torch.rand(indices.shape, dtype=torch.float, device=indices.device) if weighted else None
         offsets = torch.tensor([0] + np.cumsum(Ls.flatten()).tolist()).to(dtype)
         warning = torch.tensor([0]).long()
 
         if mixed_B:
-            B_offsets = torch.tensor(
-                B_offsets, device="cpu", dtype=torch.int32
-            )
+            B_offsets = torch.tensor(B_offsets, device="cpu", dtype=torch.int32)
             max_B = max(Bs)
             vbe_metadata = generate_vbe_metadata(
                 offsets,
                 [[b] for b in Bs],
                 pooling_mode=PoolingMode.SUM,
-                feature_dims_cpu=torch.tensor(
-                    [-1] * T, device="cpu", dtype=torch.int64
-                ),  # unused
+                feature_dims_cpu=torch.tensor([-1] * T, device="cpu", dtype=torch.int64),  # unused
                 device=torch.device("cpu"),
             )
             B_offsets = vbe_metadata.B_offsets
@@ -274,9 +264,7 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
                 )
 
         # 测试weights和indices的长度不一致的情况
-        weights = torch.rand(
-            (indices.size(0) + 1,), dtype=torch.float, device=indices.device
-        )
+        weights = torch.rand((indices.size(0) + 1,), dtype=torch.float, device=indices.device)
         with self.assertRaises(RuntimeError):
             torch.ops.fbgemm.bounds_check_indices(
                 rows_per_table,
@@ -324,12 +312,7 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
 
         indices = torch.randint(low=0, high=original_E, size=(T, B, L))
         for t in range(T):
-            while (
-                torch.unique(
-                    indices[t], return_counts=False, return_inverse=False
-                ).numel()
-                != indices[t].numel()
-            ):
+            while torch.unique(indices[t], return_counts=False, return_inverse=False).numel() != indices[t].numel():
                 indices[t] = torch.randint(low=0, high=original_E, size=(B, L))
 
         indices = indices.view(-1).int()
@@ -344,9 +327,7 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
         hash_table[:, :] = -1
         hash_table_offsets = torch.tensor([0] + np.cumsum(capacities).tolist()).long()
 
-        torch.ops.fbgemm.pruned_hashmap_insert(
-            indices, dense_indices, offsets, hash_table, hash_table_offsets
-        )
+        torch.ops.fbgemm.pruned_hashmap_insert(indices, dense_indices, offsets, hash_table, hash_table_offsets)
 
         if use_cpu_hashtable:
             # pyre-ignore[16]
@@ -367,14 +348,10 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
         index_remappings_array_offsets[0] = 0
         for t in range(T):
             indice_t = (indices.view(T, B, L))[t].long().view(-1).to(current_device)
-            dense_indice_t = (
-                (dense_indices.view(T, B, L))[t].long().view(-1).to(current_device)
-            )
+            dense_indices_t = (dense_indices.view(T, B, L))[t].long().view(-1).to(current_device)
             selected_indices = torch.add(indice_t, t * original_E)[:E]
-            index_remappings_array[selected_indices] = dense_indice_t
-            index_remappings_array_offsets[t + 1] = (
-                index_remappings_array_offsets[t] + original_E
-            )
+            index_remappings_array[selected_indices] = dense_indices_t
+            index_remappings_array_offsets[t + 1] = index_remappings_array_offsets[t] + original_E
 
         # Move data when using device
         if not use_cpu:
@@ -400,9 +377,7 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
         if use_cpu_hashtable:
             dense_indices_ = ht.lookup(indices, offsets)
         elif not use_array_for_index_remapping:  # hashmap based pruning
-            dense_indices_ = torch.ops.fbgemm.pruned_hashmap_lookup(
-                indices, offsets, hash_table, hash_table_offsets
-            )
+            dense_indices_ = torch.ops.fbgemm.pruned_hashmap_lookup(indices, offsets, hash_table, hash_table_offsets)
         else:  # array based pruning
             dense_indices_ = torch.ops.fbgemm.pruned_array_lookup(
                 indices,
