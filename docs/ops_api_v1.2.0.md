@@ -31,7 +31,8 @@ Fbgemm-Ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 | src/split_embeddings_cache/lru_cache_insert_byte | [README](../src/split_embeddings_cache/lru_cache_insert_byte/README.md)                        | 将UVM中的量化字节权重写入LRU缓存权重区，并更新缓存状态和LRU状态。 | A5 |
 | src/split_embeddings_cache/lru_cache_populate_byte | [README](../src/split_embeddings_cache/lru_cache_populate_byte/README.md)                      | LRU缓存填充的主入口算子，组合调用lru_cache_find_uncached和lru_cache_insert_byte完成缓存填充全流程。 | A5 |
 | src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function | [README](../src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/README.md)      | 对多精度嵌入表进行索引查找和池化，支持多种量化精度的推理场景。 | A5 |
-| src/tbe_inference/pruned_hashmap_lookup | [README](../src/tbe_inference/pruned_hashmap_lookup/c310/README.md)                       | 在嵌入表剪枝后的哈希表中查找原始稀疏索引对应的致密索引，通过哈希查找机制减少内存占用和计算开销。 | A5 |
+| src/tbe_inference/pruned_hashmap_lookup | [README](../src/tbe_inference/pruned_hashmap_lookup/README.md)                       | 在嵌入表剪枝后的哈希表中查找原始稀疏索引对应的致密索引，通过哈希查找机制减少内存占用和计算开销。 | A5 |
+| src/tbe_inference/pruned_array_lookup | [README](../src/tbe_inference/pruned_array_lookup/README.md)                       | 在嵌入表剪枝后的列表中查找原始稀疏索引对应的致密索引，通过索引剪枝减少内存占用和计算开销。 | A5 |
 | src/tbe_training/backward_codegen_adagrad_unweighted_exact | [README](../src/tbe_training/backward_codegen_adagrad_unweighted_exact/README.md)              | 将上游梯度 grad_output 按索引散射回各 embedding 行，并用 Adagrad 优化器更新权重和动量。 | A2, A3, A5 |
 | src/tbe_training/bounds_check_indices | [README](../src/tbe_training/bounds_check_indices/README.md)                                   | 对嵌入表查表索引进行边界检查，防止越界访问导致的运行时错误。 | A5 |
 | src/tbe_training/dense_embedding_codegen_lookup_function | [README](../src/tbe_training/dense_embedding_codegen_lookup_function/v220/README.md)      | 根据 indices 和 offsets 从平铺的稠密权重表 dev_weights 中按行取出对应的 embedding 向量并拼接输出。 | A2, A3, A5 |
@@ -79,6 +80,7 @@ src/
 ├── tbe_inference/                                        # TBE 推理算子
 │   ├── int_nbit_split_embedding_codegen_lookup_function/ # 整数量化嵌入推理查询
 │   └── pruned_hashmap_lookup/                            # 剪枝哈希表查找
+│   └── pruned_array_lookup/                              # 剪枝列表查找
 └── tbe_training/                                         # TBE 训练算子
     ├── backward_codegen_adagrad_unweighted_exact/        # Adagrad 反向
     ├── bounds_check_indices/                             # 索引边界检查
