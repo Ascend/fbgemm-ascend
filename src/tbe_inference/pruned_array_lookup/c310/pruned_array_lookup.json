@@ -1,0 +1,90 @@
+[
+  {
+    "op": "PrunedArrayLookup",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "indices",
+        "param_type": "required",
+        "format": [
+          "ND",
+          "ND",
+          "ND",
+          "ND"
+        ],
+        "type": [
+          "int32",
+          "int32",
+          "int64",
+          "int64"
+        ]
+      },
+      {
+        "name": "offsets",
+        "param_type": "required",
+        "format": [
+          "ND",
+          "ND",
+          "ND",
+          "ND"
+        ],
+        "type": [
+          "int32",
+          "int32",
+          "int64",
+          "int64"
+        ]
+      },
+      {
+        "name": "index_remappings",
+        "param_type": "required",
+        "format": [
+          "ND",
+          "ND",
+          "ND",
+          "ND"
+        ],
+        "type": [
+          "int32",
+          "int64",
+          "int32",
+          "int64"
+        ]
+      },
+      {
+        "name": "index_remappings_offsets",
+        "param_type": "required",
+        "format": [
+          "ND",
+          "ND",
+          "ND",
+          "ND"
+        ],
+        "type": [
+          "int64",
+          "int64",
+          "int64",
+          "int64"
+        ]
+      }
+    ],
+    "output_desc": [
+      {
+        "name": "dense_indices",
+        "param_type": "required",
+        "format": [
+          "ND",
+          "ND",
+          "ND",
+          "ND"
+        ],
+        "type": [
+          "int32",
+          "int32",
+          "int64",
+          "int64"
+        ]
+      }
+    ]
+  }
+]

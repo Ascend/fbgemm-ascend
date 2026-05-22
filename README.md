@@ -54,6 +54,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/sparse_ops/segment_sum_csr | [v220](src/sparse_ops/segment_sum_csr/README.md)                                                                                                                      |
 | src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function | [c310](src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/README.md)                                                                                  |
 | src/tbe_inference/pruned_hashmap_lookup | [c310](src/tbe_inference/pruned_hashmap_lookup/README.md)                                                                                                             |
+| src/tbe_inference/pruned_array_lookup | [c310](src/tbe_inference/pruned_array_lookup/README.md)                                                                                                            |
 | src/tbe_training/backward_codegen_adagrad_unweighted_exact | [c310/v220](src/tbe_training/backward_codegen_adagrad_unweighted_exact/README.md) |
 | src/tbe_training/dense_embedding_codegen_lookup_function | [v220](src/tbe_training/dense_embedding_codegen_lookup_function/v220/README.md)                                                                                            |
 | src/tbe_training/dense_embedding_codegen_lookup_function_grad | [v220](src/tbe_training/dense_embedding_codegen_lookup_function_grad/v220/README.md)                                                                                       |

@@ -367,11 +367,11 @@ class SplitEmbeddingsUtilsTest(unittest.TestCase):
         index_remappings_array_offsets[0] = 0
         for t in range(T):
             indice_t = (indices.view(T, B, L))[t].long().view(-1).to(current_device)
-            dense_indice_t = (
+            dense_indices_t = (
                 (dense_indices.view(T, B, L))[t].long().view(-1).to(current_device)
             )
             selected_indices = torch.add(indice_t, t * original_E)[:E]
-            index_remappings_array[selected_indices] = dense_indice_t
+            index_remappings_array[selected_indices] = dense_indices_t
             index_remappings_array_offsets[t + 1] = (
                 index_remappings_array_offsets[t] + original_E
             )
