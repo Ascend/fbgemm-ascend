@@ -20,11 +20,11 @@ using torch::autograd::Function;
 using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
-
+// clang-format off
 at::Tensor jagged_to_padded_dense_forward(const at::Tensor& values,
-                                             const tensor_list& offsets,
-                                             at::ArrayRef<at::SymInt> max_lengths,
-                                             const double padding_value)
+                                          const tensor_list& offsets,
+                                          at::ArrayRef<at::SymInt> max_lengths,
+                                          const double padding_value)
 {
     int64_t max_L = max_lengths[0].as_int_unchecked();
     return jagged_to_padded_dense_impl_v1(values, offsets[0], max_L, padding_value);
@@ -57,9 +57,9 @@ at::Tensor jagged_2d_to_dense(const at::Tensor& values,
 }
 
 at::Tensor jagged_1d_to_dense(at::Tensor values,
-                                  at::Tensor offsets,
-                                  at::ArrayRef<at::SymInt> max_lengths,
-                                  const int64_t padding_value)
+                              at::Tensor offsets,
+                              at::ArrayRef<at::SymInt> max_lengths,
+                              const int64_t padding_value)
 {
     int64_t max_L = max_lengths[0].as_int_unchecked();
     TORCH_CHECK(max_L >= 0, "max_sequence_length must be non-negative, but got ", max_L);
@@ -69,10 +69,10 @@ at::Tensor jagged_1d_to_dense(at::Tensor values,
 class Jagged1DToDense : public torch::autograd::Function<Jagged1DToDense> {
 public:
     static at::Tensor forward(AutogradContext* ctx,
-                            const at::Tensor& values,
-                            const at::Tensor& offsets,
-                            const c10::SymInt max_sequence_length,
-                            const int64_t padding_value)
+                              const at::Tensor& values,
+                              const at::Tensor& offsets,
+                              const c10::SymInt max_sequence_length,
+                              const int64_t padding_value)
     {
         at::AutoDispatchBelowADInplaceOrView guard;
         ctx->save_for_backward({values, offsets});
@@ -80,7 +80,6 @@ public:
     }
     static tensor_list backward(AutogradContext* ctx, tensor_list grad_outputs)
     {
-
         auto grad_output = grad_outputs[0];
         auto saved = ctx->get_saved_variables();
         auto values = saved[0];
@@ -93,13 +92,12 @@ public:
 };
 
 at::Tensor jagged_1d_to_dense_autograd(at::Tensor values,
-                                            at::Tensor offsets,
-                                            c10::SymInt max_sequence_length,
-                                            const int64_t padding_value)
+                                       at::Tensor offsets,
+                                       c10::SymInt max_sequence_length,
+                                       const int64_t padding_value)
 {
     return Jagged1DToDense::apply(values, offsets, max_sequence_length, padding_value);
 }
-
 
 class JaggedToPaddedDenseV1 : public torch::autograd::Function<JaggedToPaddedDenseV1> {
 public:
@@ -191,5 +189,5 @@ TORCH_LIBRARY_IMPL(fbgemm, AutogradPrivateUse1, m)
     // 待dense_to_jagged增强后切至v2接口, 暂不支持高维自动求导
     m.impl("jagged_to_padded_dense.v2", TORCH_FN(jagged_to_padded_dense_autograd_v1_plus));
 }
-
+// clang-format on
 #endif  // JAGGED_TO_DENSE_V1
