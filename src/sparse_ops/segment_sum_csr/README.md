@@ -12,7 +12,7 @@ segment_sum_csr
 |   |-- segment_sum_csr.json
 |   |-- op_host/
 |   |-- op_kernel/
-|   `-- run.sh
+|   |-- run.sh
 |-- c310/
 |   |-- run.sh
 ```
@@ -49,8 +49,8 @@ def segment_sum_csr(batch_size, csr_seg, values):
     segment_nums = len(csr_seg) - 1
     y = torch.empty(segment_nums, dtype=values.dtype)
     for i in range(segment_nums):
-        start = csr_seg[i]
-        end = csr_seg[i + 1]
+        start = csr_seg[i] * batch_size
+        end = csr_seg[i + 1] * batch_size
         y[i] = values[start:end].sum()
     return y
 ```
@@ -61,7 +61,7 @@ def segment_sum_csr(batch_size, csr_seg, values):
 | --- | --- | --- | --- | --- |
 | batch_size | 属性 | int64 | NA | batch 大小，要求 `values.size(0) % batch_size == 0`；允许 `batch_size = 0`（空 tensor） |
 | csr_seg | 输入 | Tensor[int32/int64] | `[segment_nums + 1]` | CSR 分段偏移数组，单调递增，首元素为 0 |
-| values | 输入 | Tensor[float32/float16/bfloat16] | `[N]` | 非零值数组，1D |
+| values | 输入 | Tensor[float32/float16/bfloat16/int32/int64] | `[N]` | 非零值数组，1D；整数类型在 NPU 侧自动转 FP32 计算后回 cast |
 | y | 输出 | Tensor | `[segment_nums]` | 每段求和结果，类型与 `values` 一致 |
 
 ### 参数约束
@@ -70,13 +70,14 @@ def segment_sum_csr(batch_size, csr_seg, values):
 - `csr_seg` 必须单调递增，且 `csr_seg[0] == 0`
 - `batch_size != 0` 时，`values.size(0) % batch_size == 0`
 - `values` 为空 tensor（`values.numel() == 0`）时允许，输出为空 tensor
+- `values` 为 int32/int64 时，NPU 内部先 cast 到 FP32 求和，再 cast 回整数类型；FP32 可精确表示 int32 全范围及绝对值 ≤2²⁴ 的 int64
 
 ## 调用示例
 
 ```python
 import torch
-import torch_npu
-import fbgemm_ascend
+import fbgemm_gpu  # noqa: F401
+import fbgemm_ascend  # noqa: F401
 
 torch.npu.set_device("npu:0")
 

@@ -20,8 +20,6 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 
 namespace optiling {
-constexpr int RESERVER_UB_SIZE = 40 * 1024;
-
 static ge::graphStatus TilingFunc(gert::TilingContext* context)
 {
     OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
@@ -42,7 +40,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     // ub
     uint64_t ubCanUsed;
     ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
-    ubCanUsed = ubCanUsed - RESERVER_UB_SIZE;
+    // UB 预留已由 REDUCE_BUF_SIZE + ALIGNMENT_MARGIN 覆盖，无需额外固定预留
 
     // 输入shape
     OPS_LOG_E_IF_NULL("x1Shape", context->GetInputShape(0), return ge::GRAPH_FAILED);
@@ -73,18 +71,18 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         batchSizeVal = *batchSize;
     }
 
-    constexpr int64_t REDUCE_BUF_SIZE = sizeof(float) * 1024LL;   // reducesumTmpBuf 固定 4KB
-    constexpr int64_t ALIGNMENT_MARGIN = 2048LL;                  // 对齐/管理余量 2KB
+    constexpr int64_t REDUCE_BUF_SIZE = sizeof(float) * 1024LL;  // reducesumTmpBuf 固定 4KB
+    constexpr int64_t ALIGNMENT_MARGIN = 2048LL;                 // 对齐/管理余量 2KB
     int64_t outQueueSize = 0;
     int64_t perElementCost = 0;
 
     if (valuesType == ge::DataType::DT_FLOAT) {
         outQueueSize = sizeof(float) * segmentNums;
-        perElementCost = sizeof(float) + sizeof(float);             // valuesBuf(4B) + castTmpBuf(4B)
+        perElementCost = sizeof(float) + sizeof(float);  // valuesBuf(4B) + castTmpBuf(4B)
     } else {
         // fp16 / bf16: valuesBuf(2B) + castTmpBuf(4B)
         outQueueSize = (sizeof(float) / 2) * static_cast<uint64_t>(segmentNums);
-        perElementCost = (sizeof(float) / 2) + sizeof(float);       // 2 + 4 = 6
+        perElementCost = (sizeof(float) / 2) + sizeof(float);  // 2 + 4 = 6
     }
 
     int64_t maxSegFromUB = 0;

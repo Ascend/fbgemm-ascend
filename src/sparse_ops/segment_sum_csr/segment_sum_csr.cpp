@@ -23,7 +23,6 @@ using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
 
-// 为NPU设备注册前向实现
 at::Tensor segment_sum_csr_impl_npu(int64_t batch_size, const at::Tensor& csr_seg, const at::Tensor& values)
 {
     check_tensor_non_empty(csr_seg, "csr_seg");
@@ -35,6 +34,15 @@ at::Tensor segment_sum_csr_impl_npu(int64_t batch_size, const at::Tensor& csr_se
     }
     auto csr_seg_conti = csr_seg.contiguous();
     auto values_conti = values.contiguous();
+
+    // NPU kernel 仅支持浮点类型。对整数类型，先转 FP32 计算，再 cast 回原始类型。
+    if (values_conti.dtype() == at::kInt || values_conti.dtype() == at::kLong) {
+        auto values_fp32 = values_conti.to(at::kFloat);
+        at::Tensor y_fp32 = at::empty({csr_seg_conti.size(0) - 1}, values_fp32.options());
+        EXEC_NPU_CMD(aclnnSegmentSumCsr, csr_seg_conti, values_fp32, batch_size, y_fp32);
+        return y_fp32.to(values_conti.dtype());
+    }
+
     at::Tensor y = at::empty({csr_seg_conti.size(0) - 1}, values_conti.options());
     EXEC_NPU_CMD(aclnnSegmentSumCsr, csr_seg_conti, values_conti, batch_size, y);
     return y;
@@ -52,19 +60,7 @@ public:
     }
 };
 
-// 在npu命名空间里注册segment_sum_csr的schema
-TORCH_LIBRARY_FRAGMENT(mxrec, m)
-{
-    m.def("segment_sum_csr(SymInt batch_size, Tensor csr_seg, Tensor values) -> Tensor");
-}
-
-// NPU设备在pytorch 2.1及以上版本使用的设备名称是PrivateUse1，在2.1以下版本用的是XLA，如果是2.1以下版本PrivateUse1需要改成XLA
-TORCH_LIBRARY_IMPL(mxrec, PrivateUse1, m)
-{
-    m.impl("segment_sum_csr", &segment_sum_csr_impl_npu);
-}
-
-// 将同一个算子同时注册到 fbgemm 库的 PrivateUse1 后端
+// NPU 设备在 PyTorch 2.1 及以上版本使用的设备名称是 PrivateUse1
 TORCH_LIBRARY_IMPL(fbgemm, PrivateUse1, m)
 {
     m.impl("segment_sum_csr", &segment_sum_csr_impl_npu);
