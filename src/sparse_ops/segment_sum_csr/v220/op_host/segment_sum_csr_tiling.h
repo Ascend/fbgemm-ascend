@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
 
-#ifndef MXREC_SEGMENT_SUM_CSR_TILING_H
-#define MXREC_SEGMENT_SUM_CSR_TILING_H
+#ifndef SEGMENT_SUM_CSR_TILING_H
+#define SEGMENT_SUM_CSR_TILING_H
 
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -35,4 +35,4 @@ END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(SegmentSumCsr, SegmentSumCsrTilingData)
 }  // namespace optiling
 
-#endif  // MXREC_SEGMENT_SUM_CSR_TILING_H
+#endif  // SEGMENT_SUM_CSR_TILING_H
