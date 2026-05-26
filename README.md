@@ -64,6 +64,7 @@ fbgemm-ascend/                                 # 项目根目录
 | src/sparse_ops/group_index_select_dim0 | [c310](src/sparse_ops/group_index_select_dim0/c310/README.md)                                                                                                      |
 | src/sparse_ops/group_index_select_dim0_backward | [c310](src/sparse_ops/group_index_select_dim0_backward/c310/README.md)                                                                                             |
 | src/embedding_inplace_ops/pruned_array_lookup_from_row_idx | [c310](src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/README.md)                                            |
+| src/embedding_inplace_ops/emb_inplace_update | [c310](src/embedding_inplace_ops/emb_inplace_update/README.md)
 | src/quantize_ops/float_to_bfloat16_quantized                                                            | [c310](src/quantize_ops/float_to_bfloat16_quantized/README.md)                                                                                                                                                                        |
 | src/quantize_ops/bfloat16_quantized_to_float | [c310](src/quantize_ops/bfloat16_quantized_to_float/README.md)                                                                                                        |
 | src/quantize_ops/float_to_hfp8_quantized | [c310](src/quantize_ops/float_to_hfp8_quantized/README.md)                                                                                                        |

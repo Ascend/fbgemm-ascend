@@ -7,6 +7,7 @@ Fbgemm-Ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 | 模块                                                                 | 文档                                                                                        | 功能介绍                                                                                                                                      | 硬件支持       |
 |--------------------------------------------------------------------|-------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | src/embedding_inplace_ops/pruned_array_lookup_from_row_idx         | [README](../src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/README.md)         | 从row_idx中查找对应的pruned_array元素，实现嵌入表剪枝后的行索引查找。                                                                                              | A5         |
+| src/embedding_inplace_ops/emb_inplace_update | [README](../src/embedding_inplace_ops/emb_inplace_update/README.md)              | 将稀疏更新中的若干 (table_id, row_id, payload) 三元组按字节级 scatter 写回 TBE 格式的扁平化权重张量，用于 INT-NBit TBE 推理场景下的权重原地更新。 | A5 |
 | src/intraining_embedding_pruning_ops/init_address_lookup           | [README](../src/intraining_embedding_pruning_ops/init_address_lookup/README.md)           | 初始化地址查找表，用于训练中嵌入剪枝（In-training Embedding Pruning）。                                                                                        | A5         |
 | src/jagged_tensor_ops/dense_to_jagged                              | [README](../src/jagged_tensor_ops/dense_to_jagged/v220/README.md)                         | 将密集三维张量(dense Tensor)转换为锯齿状二维张量(jagged Tensor)，用于处理变长序列数据。                                                                                | A2, A3, A5 |
 | src/jagged_tensor_ops/jagged_to_padded_dense                       | [README](../src/jagged_tensor_ops/jagged_to_padded_dense/v220/README.md)                  | 实现将jagged tensor转为padded dense tensor功能。                                                                                                  | A2, A3, A5 |
@@ -50,7 +51,8 @@ Fbgemm-Ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 ```text
 src/
 ├── embedding_inplace_ops/                                 # 嵌入表原地操作
-│   └── pruned_array_lookup_from_row_idx/                 # 剪枝后数组行索引查找
+│   ├── pruned_array_lookup_from_row_idx/                  # 剪枝后数组行索引查找
+│   └── emb_inplace_update/                                # 嵌入表权重原地更新
 ├── intraining_embedding_pruning_ops/                      # 训练中嵌入剪枝
 │   └── init_address_lookup/                               # 地址查找表初始化
 ├── jagged_tensor_ops/                                    # Jagged 张量操作
