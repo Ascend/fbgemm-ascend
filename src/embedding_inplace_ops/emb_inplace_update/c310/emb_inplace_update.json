@@ -1,0 +1,85 @@
+[
+  {
+    "op": "EmbInplaceUpdate",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "dev_weights",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "uvm_weights",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "weights_placements",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "weights_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "weights_tys",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "D_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "update_weights",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["uint8", "uint8"]
+      },
+      {
+        "name": "update_table_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "update_row_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "update_offsets",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      }
+    ],
+    "output_desc": [],
+    "attr": [
+      {
+        "name": "row_alignment",
+        "param_type": "optional",
+        "type": "int",
+        "default_value": 1
+      }
+    ],
+    "tiling_data": [
+      { "name": "totalUpdates", "dtype": "int64" },
+      { "name": "numTables", "dtype": "int64" },
+      { "name": "rowAlignment", "dtype": "int64" },
+      { "name": "rowIdxIsInt64", "dtype": "int64" },
+      { "name": "threadNumPerBlock", "dtype": "int32" },
+      { "name": "gridDim", "dtype": "int32" }
+    ]
+  }
+]

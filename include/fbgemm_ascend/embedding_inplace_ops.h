@@ -12,14 +12,29 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
- #pragma once
+#pragma once
 
- #include <ATen/Tensor.h>
+#include <ATen/Tensor.h>
+#include <c10/util/Optional.h>
 
 
- at::Tensor pruned_array_lookup_from_row_idx_npu(
+at::Tensor pruned_array_lookup_from_row_idx_npu(
     const at::Tensor& updateRowIndices,
     const at::Tensor& updateTableIndices,
     const at::Tensor& indexRemappings,
-    const at::Tensor& indexRemappingsOffsets,
- );
+    const at::Tensor& indexRemappingsOffsets);
+
+void emb_inplace_update_impl_npu(
+    at::Tensor dev_weights,
+    at::Tensor uvm_weights,
+    at::Tensor weights_placements,
+    at::Tensor weights_offsets,
+    at::Tensor weights_tys,
+    at::Tensor D_offsets,
+    at::Tensor update_weights,
+    at::Tensor update_table_indices,
+    at::Tensor update_row_indices,
+    at::Tensor update_offsets,
+    int64_t row_alignment,
+    c10::optional<at::Tensor> lxu_cache_weights,
+    c10::optional<at::Tensor> lxu_cache_locations);

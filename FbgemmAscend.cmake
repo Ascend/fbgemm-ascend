@@ -20,6 +20,7 @@ set(ASCENDC_A5_ONLY_OPS
     lru_cache_find_uncached
     lru_cache_insert_byte
     direct_mapped_lxu_cache_lookup
+    emb_inplace_update
 )
 
 set(ASCENDC_A3_OPS
@@ -106,6 +107,7 @@ endfunction()
 set(_ASCENDC_OPS
     "float_or_half_to_fused_nbit_rowwise|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_or_half_to_fused_nbit_rowwise"
     "pruned_array_lookup_from_row_idx|${FBGEMM_ASCEND_SOURCE_DIR}/src/embedding_inplace_ops/pruned_array_lookup_from_row_idx"
+    "emb_inplace_update|${FBGEMM_ASCEND_SOURCE_DIR}/src/embedding_inplace_ops/emb_inplace_update"
     "asynchronous_complete_cumsum|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/asynchronous_complete_cumsum"
     "block_bucketize_sparse_features|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/block_bucketize_sparse_features"
     "expand_into_jagged_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/expand_into_jagged_permute"
@@ -185,6 +187,7 @@ get_property(ASCENDC_TARGETS GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS)
 set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/quantize_ops/float_or_half_to_fused_nbit_rowwise/float_or_half_to_fused_nbit_rowwise.cpp
     src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/pruned_array_lookup_from_row_idx.cpp
+    src/embedding_inplace_ops/emb_inplace_update/emb_inplace_update.cpp
     src/sparse_ops/asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp
     src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
     src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
