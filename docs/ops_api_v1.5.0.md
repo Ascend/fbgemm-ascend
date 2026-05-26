@@ -10,6 +10,7 @@ Fbgemm-Ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 | src/embedding_inplace_ops/emb_inplace_update | [README](../src/embedding_inplace_ops/emb_inplace_update/README.md)              | 将稀疏更新中的若干 (table_id, row_id, payload) 三元组按字节级 scatter 写回 TBE 格式的扁平化权重张量，用于 INT-NBit TBE 推理场景下的权重原地更新。 | A5 |
 | src/intraining_embedding_pruning_ops/init_address_lookup           | [README](../src/intraining_embedding_pruning_ops/init_address_lookup/README.md)           | 初始化地址查找表，用于训练中嵌入剪枝（In-training Embedding Pruning）。                                                                                        | A5         |
 | src/jagged_tensor_ops/dense_to_jagged                              | [README](../src/jagged_tensor_ops/dense_to_jagged/v220/README.md)                         | 将密集三维张量(dense Tensor)转换为锯齿状二维张量(jagged Tensor)，用于处理变长序列数据。                                                                                | A2, A3, A5 |
+| src/jagged_tensor_ops/jagged_dense_elementwise                     | [README](../src/jagged_tensor_ops/jagged_dense_elementwise/README.md)                     | 将jagged tensor转换为与dense tensor同形状的padded dense tensor后，与dense tensor进行逐元素加法。                                                                    | A5 |
 | src/jagged_tensor_ops/jagged_to_padded_dense                       | [README](../src/jagged_tensor_ops/jagged_to_padded_dense/v220/README.md)                  | 实现将jagged tensor转为padded dense tensor功能。                                                                                                  | A2, A3, A5 |
 | src/jagged_tensor_ops/jagged_to_padded_dense_v2                    | [README](../src/jagged_tensor_ops/jagged_to_padded_dense_v2/README.md)                    | 将jagged tensor转为padded dense tensor的v2版本，增加了多offsets场景的功能。                                                                                | A2, A3, A5 |
 | src/jagged_tensor_ops/jagged_1d_to_dense                           | [README](../src/jagged_tensor_ops/jagged_to_padded_dense_v2/README-1d.md)                 | 将1D jagged tensor转为padded dense tensor。                                                                                                   | A2, A3, A5 |
@@ -57,6 +58,7 @@ src/
 │   └── init_address_lookup/                               # 地址查找表初始化
 ├── jagged_tensor_ops/                                    # Jagged 张量操作
 │   ├── dense_to_jagged/                                  # 稠密→Jagged 转换
+│   ├── jagged_dense_elementwise/                         # Jagged 与 Dense 逐元素加法
 │   ├── jagged_to_padded_dense/                           # Jagged→填充稠密 转换
 │   ├── jagged_to_padded_dense_v2/                        # Jagged→填充稠密 转换 v2
 │   └── select_dim1_to_permute/                           # dim1 维度选择置换
