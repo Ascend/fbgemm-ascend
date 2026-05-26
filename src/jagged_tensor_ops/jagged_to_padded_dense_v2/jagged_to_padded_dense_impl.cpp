@@ -23,11 +23,12 @@ using torch::autograd::Function;
 using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
+using fbgemm_npu::EXPECTED_DIM_1D;
+using fbgemm_npu::EXPECTED_DIM_2D;
+using fbgemm_npu::MAX_OFFSETS_CNT;
 
-at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values,
-                                          const at::Tensor& offsets,
-                                          const int64_t max_lengths,
-                                          const double padding_value)
+at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values, const at::Tensor& offsets,
+                                          const int64_t max_lengths, const double padding_value)
 {
     // Support 1D (jagged_to_1d_dense) or 2D (jagged_to_padded_dense) values, aligned with FBGEMM
     check_tensor_dim(values, {EXPECTED_DIM_1D, EXPECTED_DIM_2D}, "values");
@@ -59,26 +60,23 @@ at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values,
 
     auto values_contin = values.contiguous();
     int64_t padding_value_int64 = static_cast<int64_t>(padding_value);
-    EXEC_NPU_CMD(aclnnJaggedToPaddedDense, values_contin, offsets, max_lengths,
-                 padding_value, padding_value_int64, output);
+    EXEC_NPU_CMD(aclnnJaggedToPaddedDense, values_contin, offsets, max_lengths, padding_value, padding_value_int64,
+                 output);
     return output;
 }
 
-at::Tensor jagged_to_padded_dense_impl_v2(const at::Tensor& values,
-                                          const tensor_list& offsets,
-                                          const at::IntArrayRef& max_lengths,
-                                          const double padding_value)
+at::Tensor jagged_to_padded_dense_impl_v2(const at::Tensor& values, const tensor_list& offsets,
+                                          const at::IntArrayRef& max_lengths, const double padding_value)
 {
     if (max_lengths.size() == 1) {
         return jagged_to_padded_dense_impl_v1(values, offsets[0], max_lengths[0], padding_value);
     }
     check_tensor_dim(values, EXPECTED_DIM_2D, "values");
-    TORCH_CHECK(offsets.size() > 0,
-                "offsets must contain at least 1 tensor, but got ", offsets.size(), " tensors");
-    TORCH_CHECK(offsets.size() <= MAX_OFFSETS_CNT,
-                "offsets must contain at most ", MAX_OFFSETS_CNT, " tensors, but got ", offsets.size(), " tensors");
-    TORCH_CHECK(max_lengths.size() == offsets.size(),
-                "length of max_lengths.size() [", max_lengths.size(), "] != offsets.size() [", offsets.size(), "]");
+    TORCH_CHECK(offsets.size() > 0, "offsets must contain at least 1 tensor, but got ", offsets.size(), " tensors");
+    TORCH_CHECK(offsets.size() <= MAX_OFFSETS_CNT, "offsets must contain at most ", MAX_OFFSETS_CNT,
+                " tensors, but got ", offsets.size(), " tensors");
+    TORCH_CHECK(max_lengths.size() == offsets.size(), "length of max_lengths.size() [", max_lengths.size(),
+                "] != offsets.size() [", offsets.size(), "]");
     TORCH_CHECK(!max_lengths.empty(), "max_lengths must be non-empty");
 
     int dim = max_lengths.size();
@@ -97,11 +95,9 @@ at::Tensor jagged_to_padded_dense_impl_v2(const at::Tensor& values,
     return output;
 }
 
-at::Tensor dense_to_jagged_impl(const at::Tensor& dense,
-                                const at::Tensor& offsets,
+at::Tensor dense_to_jagged_impl(const at::Tensor& dense, const at::Tensor& offsets,
                                 const c10::optional<int64_t>& total_L)
 {
-    check_tensor_non_empty(dense, "dense");
     check_tensor_non_empty(offsets, "offsets");
 
     // 检查NPU设备且设备ID一致
@@ -127,7 +123,7 @@ at::Tensor dense_to_jagged_impl(const at::Tensor& dense,
         totalLComputed = static_cast<int64_t>(offsets.max().item<int64_t>());
     }
 
-    auto output = at::empty({totalLComputed, D}, dense.options());
+    auto output = at::zeros({totalLComputed, D}, dense.options());
     EXEC_NPU_CMD(aclnnDenseToJagged, dense_contin, offsets, totalLComputed, output);
     if (output_1d) {
         return output.squeeze(-1);
