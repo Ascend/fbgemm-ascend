@@ -31,6 +31,9 @@ Fbgemm-Ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 | src/split_embeddings_cache/lru_cache_find_uncached | [README](../src/split_embeddings_cache/lru_cache_find_uncached/README.md)                      | 在LRU缓存中查找未缓存的索引项，返回需要从UVM加载的索引列表。 | A5 |
 | src/split_embeddings_cache/lru_cache_insert_byte | [README](../src/split_embeddings_cache/lru_cache_insert_byte/README.md)                        | 将UVM中的量化字节权重写入LRU缓存权重区，并更新缓存状态和LRU状态。 | A5 |
 | src/split_embeddings_cache/lru_cache_populate_byte | [README](../src/split_embeddings_cache/lru_cache_populate_byte/README.md)                      | LRU缓存填充的主入口算子，组合调用lru_cache_find_uncached和lru_cache_insert_byte完成缓存填充全流程。 | A5 |
+| src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached   | [README](../src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached/README.md)   | Direct-mapped方式在LRU缓存中查找未缓存项，通过atomicMax竞争机制解决direct-mapped冲突，返回每个索引对应的cache set。                                                              | A5         |
+| src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte     | [README](../src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte/README.md)     | Direct-mapped方式将UVM中的量化字节权重写入LRU缓存权重区，并更新缓存状态和LRU时间戳。                                                                              | A5         |
+| src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte   | [README](../src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/README.md)   | Direct-mapped LRU缓存填充的主入口算子，组合调用direct_mapped_lru_cache_find_uncached和direct_mapped_lru_cache_insert_byte完成缓存填充全流程。                                         | A5         |
 | src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function | [README](../src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/README.md)      | 对多精度嵌入表进行索引查找和池化，支持多种量化精度的推理场景。 | A5 |
 | src/tbe_inference/pruned_hashmap_lookup | [README](../src/tbe_inference/pruned_hashmap_lookup/README.md)                       | 在嵌入表剪枝后的哈希表中查找原始稀疏索引对应的致密索引，通过哈希查找机制减少内存占用和计算开销。 | A5 |
 | src/tbe_inference/pruned_array_lookup | [README](../src/tbe_inference/pruned_array_lookup/README.md)                       | 在嵌入表剪枝后的列表中查找原始稀疏索引对应的致密索引，通过索引剪枝减少内存占用和计算开销。 | A5 |
@@ -78,7 +81,10 @@ src/
 │   ├── linearize_cache_indices_from_row_idx/             # 从row_idx线性化缓存索引
 │   ├── lru_cache_find_uncached/                          # LRU缓存查找未缓存项
 │   ├── lru_cache_insert_byte/                            # LRU缓存插入(字节)
-│   └── lru_cache_populate_byte/                          # LRU缓存填充(主入口)
+│   ├── lru_cache_populate_byte/                          # LRU缓存填充(主入口)
+│   ├── direct_mapped_lru_cache_find_uncached/             # Direct-mapped LRU缓存查找未缓存项
+│   ├── direct_mapped_lru_cache_insert_byte/               # Direct-mapped LRU缓存插入(字节)
+│   └── direct_mapped_lru_cache_populate_byte/             # Direct-mapped LRU缓存填充(主入口)
 ├── tbe_inference/                                        # TBE 推理算子
 │   ├── int_nbit_split_embedding_codegen_lookup_function/ # 整数量化嵌入推理查询
 │   └── pruned_hashmap_lookup/                            # 剪枝哈希表查找
