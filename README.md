@@ -69,6 +69,9 @@ fbgemm-ascend/                                 # 项目根目录
 | src/quantize_ops/bfloat16_quantized_to_float | [c310](src/quantize_ops/bfloat16_quantized_to_float/README.md)                                                                                                        |
 | src/quantize_ops/float_to_hfp8_quantized | [c310](src/quantize_ops/float_to_hfp8_quantized/README.md)                                                                                                        |
 | src/quantize_ops/hfp8_quantized_to_float | [c310](src/quantize_ops/hfp8_quantized_to_float/README.md)                                                                                                        |
+| src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached/README.md) |
+| src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte/README.md) |
+| src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/README.md) |
 | src/split_embeddings_cache/direct_mapped_lxu_cache_lookup | [c310](src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/README.md)                                                              |
 
 更多算子可在对应目录的 README.md 中查看具体接口、输入输出张量格式及样例代码。
