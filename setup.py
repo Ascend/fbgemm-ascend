@@ -4,18 +4,21 @@
 # 依赖：torch, torch_npu（NPU 环境）, scikit-build
 
 import os
+import sys
 import setuptools
 from skbuild import setup as skbuild_setup
 
 
 def _get_torch_prefix():
     import torch
+
     return os.path.dirname(torch.__file__)
 
 
 def _get_cxx11_abi():
     try:
         import torch
+
         return int(torch._C._GLIBCXX_USE_CXX11_ABI)
     except Exception:
         return 0
@@ -42,6 +45,7 @@ def cmake_args():
     build_variants = _ascendc_build_variants()
 
     return [
+        f"-DPython3_EXECUTABLE={sys.executable}",
         f"-DCMAKE_PREFIX_PATH={torch_root}",
         f"-D_GLIBCXX_USE_CXX11_ABI={_get_cxx11_abi()}",
         f"-DFBGEMM_ASCEND_BUILD_VERS={build_variants}",
