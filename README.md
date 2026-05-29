@@ -34,47 +34,7 @@ fbgemm-ascend/                                 # 项目根目录
 
 ## API 文档说明
 
-| 模块 | 文档                                                                                                                                                                         |
-| ---- |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| src/intraining_embedding_pruning_ops/init_address_lookup | [c310](src/intraining_embedding_pruning_ops/init_address_lookup/README.md)                                                                                            |
-| src/jagged_tensor_ops/dense_to_jagged | [v220](src/jagged_tensor_ops/dense_to_jagged/v220/README.md)                                                                                                               |
-| src/jagged_tensor_ops/jagged_to_padded_dense | [v220](src/jagged_tensor_ops/jagged_to_padded_dense/v220/README.md)                                                                                                        |
-| src/jagged_tensor_ops/select_dim1_to_permute | [c310](src/jagged_tensor_ops/select_dim1_to_permute/c310/README.md)                                                                                                        |
-| src/pooled_embedding_ops/permute_pooled_embs | [v220](src/pooled_embedding_ops/permute_pooled_embs/v220/README.md)                                                                                                        |
-| src/quantize_ops/float_or_half_to_fused_nbit_rowwise | [c310](src/quantize_ops/float_or_half_to_fused_nbit_rowwise/README.md)                                                                                                |
-| src/split_embeddings_cache/get_unique_indices | [c310](src/split_embeddings_cache/get_unique_indices/README.md)                                                                                                       |
-| src/split_embeddings_cache/linearize_cache_indices | [c310](src/split_embeddings_cache/linearize_cache_indices/README.md)                                                                                                  |
-| src/split_embeddings_cache/linearize_cache_indices_from_row_idx | [c310](src/split_embeddings_cache/linearize_cache_indices_from_row_idx/README.md)                                                                                                  |
-| src/sparse_ops/asynchronous_complete_cumsum | [c310/v220](src/sparse_ops/asynchronous_complete_cumsum/README.md)                                                                                                         |
-| src/sparse_ops/block_bucketize_sparse_features | 无                                                                                                                                                                          |
-| src/sparse_ops/expand_into_jagged_permute | [c310](src/sparse_ops/expand_into_jagged_permute/README.md)                                                                                                                |
-| src/sparse_ops/invert_permute | [c310](src/sparse_ops/invert_permute/c310/README.md)                                                                                                                       |
-| src/sparse_ops/offsets_range | [c310/v220](src/sparse_ops/offsets_range/README.md)                                                                                                                        |
-| src/sparse_ops/permute2d_sparse_data | [v220](src/sparse_ops/permute2d_sparse_data/v220/README.md)                                                                                                                |
-| src/sparse_ops/segment_sum_csr | [v220](src/sparse_ops/segment_sum_csr/README.md)                                                                                                                      |
-| src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function | [c310](src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/README.md)                                                                                  |
-| src/tbe_inference/pruned_hashmap_lookup | [c310](src/tbe_inference/pruned_hashmap_lookup/README.md)                                                                                                             |
-| src/tbe_inference/pruned_array_lookup | [c310](src/tbe_inference/pruned_array_lookup/README.md)                                                                                                            |
-| src/tbe_training/backward_codegen_adagrad_unweighted_exact | [c310/v220](src/tbe_training/backward_codegen_adagrad_unweighted_exact/README.md) |
-| src/tbe_training/dense_embedding_codegen_lookup_function | [v220](src/tbe_training/dense_embedding_codegen_lookup_function/v220/README.md)                                                                                            |
-| src/tbe_training/dense_embedding_codegen_lookup_function_grad | [v220](src/tbe_training/dense_embedding_codegen_lookup_function_grad/v220/README.md)                                                                                       |
-| src/tbe_training/split_embedding_codegen_forward_unweighted | [c310/v220](src/tbe_training/split_embedding_codegen_forward_unweighted/README.md)                                                                                         |
-| src/tbe_training/bounds_check_indices | [c310](src/tbe_training/bounds_check_indices/README.md) |
-| src/split_embeddings_cache/lru_cache_populate_byte | [c310](src/split_embeddings_cache/lru_cache_populate_byte/README.md)                                                                                                       |
-| src/sparse_ops/group_index_select_dim0 | [c310](src/sparse_ops/group_index_select_dim0/c310/README.md)                                                                                                      |
-| src/sparse_ops/group_index_select_dim0_backward | [c310](src/sparse_ops/group_index_select_dim0_backward/c310/README.md)                                                                                             |
-| src/embedding_inplace_ops/pruned_array_lookup_from_row_idx | [c310](src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/README.md)                                            |
-| src/embedding_inplace_ops/emb_inplace_update | [c310](src/embedding_inplace_ops/emb_inplace_update/README.md)
-| src/quantize_ops/float_to_bfloat16_quantized                                                            | [c310](src/quantize_ops/float_to_bfloat16_quantized/README.md)                                                                                                                                                                        |
-| src/quantize_ops/bfloat16_quantized_to_float | [c310](src/quantize_ops/bfloat16_quantized_to_float/README.md)                                                                                                        |
-| src/quantize_ops/float_to_hfp8_quantized | [c310](src/quantize_ops/float_to_hfp8_quantized/README.md)                                                                                                        |
-| src/quantize_ops/hfp8_quantized_to_float | [c310](src/quantize_ops/hfp8_quantized_to_float/README.md)                                                                                                        |
-| src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached/README.md) |
-| src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte/README.md) |
-| src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte | [c310](src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/README.md) |
-| src/split_embeddings_cache/direct_mapped_lxu_cache_lookup | [c310](src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/README.md)                                                              |
-
-更多算子可在对应目录的 README.md 中查看具体接口、输入输出张量格式及样例代码。
+[支持接口列表](docs/ops_api_v1.5.0.md)
 
 ## 构建变体（A5 / A2 / A3）
 
@@ -172,3 +132,7 @@ import fbgemm_ascend
 ## 免责声明
 
 本仓库包含多个开发分支，用于快速验证 Ascend 新特性或对齐上游 FBGEMM 变更。这些分支可能尚未经过完整的回归和性能验证，不建议直接用于生产或关键业务环境。请优先使用已发布的稳定版本或经过严格测试的分支。因使用开发版本造成的任何损失、数据问题或性能回退，项目及贡献者不承担责任。
+
+## License
+
+Apache License Version 2.0，详见[LICENSE文件](LICENSE)。
