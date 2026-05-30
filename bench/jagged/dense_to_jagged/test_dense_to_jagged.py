@@ -16,22 +16,20 @@
 # ==============================================================================
 import itertools
 import logging
-import sysconfig
 
 import numpy as np
 import pytest
 import torch
-import torch_npu
 
-import fbgemm_gpu
-import fbgemm_ascend
+import fbgemm_gpu  # noqa:F401
+import fbgemm_ascend  # noqa:F401
 
 DEVICE = "npu:0"
 logging.getLogger().setLevel(logging.INFO)
 
-DENSE_DIM0 = [128, 40, 1000] # 测试不同batch大小
-DENSE_DIM1 = [210, 1024]     # 固定特征维度1
-DENSE_DIM2 = [1, 8, 1536]    # 固定特征维度2
+DENSE_DIM0 = [128, 40, 1000]  # 测试不同batch大小
+DENSE_DIM1 = [210, 1024]  # 固定特征维度1
+DENSE_DIM2 = [1, 8, 1536]  # 固定特征维度2
 DIM_LIST = list(itertools.product(DENSE_DIM0, DENSE_DIM1, DENSE_DIM2))
 
 DENSE_DATATYPE = [torch.float32, torch.int64, torch.bfloat16, torch.float16, torch.int32]  # 增加BF16、FP16和INT32支持
@@ -40,15 +38,15 @@ TYPE_LIST = list(itertools.product(DENSE_DATATYPE, OFFSET_DATATYPE))
 
 # 边界测试用例
 EDGE_CASE_DIMS = [
-    (1, 10, 1),       # 最小batch和特征维度
-    (10, 1, 16),      # 最小序列长度
-    (1, 1, 1),        # 所有维度都最小
-    (256, 500, 32),   # 较大的batch和特征维度
+    (1, 10, 1),  # 最小batch和特征维度
+    (10, 1, 16),  # 最小序列长度
+    (1, 1, 1),  # 所有维度都最小
+    (256, 500, 32),  # 较大的batch和特征维度
 ]
 
 
-def dense_to_jagged_wrapper(dense, offsets, is_mxrec, total_L=None):
-    return DenseToJagged.apply(dense, offsets, is_mxrec, total_L)
+def dense_to_jagged_wrapper(dense, offsets, total_L=None):
+    return DenseToJagged.apply(dense, offsets, total_L)
 
 
 def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
@@ -62,15 +60,11 @@ def jagged_to_padded_dense(values, offsets, max_lengths, padding_value):
 
 class DenseToJagged(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, dense, offsets, is_mxrec, total_L=None):
+    def forward(ctx, dense, offsets, total_L=None):
         ctx.save_for_backward(*offsets)
-        ctx.is_mxrec = is_mxrec
         if total_L is None:
             total_L = offsets[0][-1].item()
-        if is_mxrec:
-            out0, out1 = torch.ops.mxrec.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
-        else:
-            out0, out1 = torch.ops.fbgemm.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
+        out0, out1 = torch.ops.fbgemm.dense_to_jagged(dense.to(DEVICE), offsets, total_L)
         ctx.dense_shape = dense.shape
         return out0.to(DEVICE), out1
 
@@ -78,28 +72,19 @@ class DenseToJagged(torch.autograd.Function):
     def backward(ctx, grad_out0, grad_out1):
         offsets = list(ctx.saved_tensors)
         max_len = ctx.dense_shape[1]
-        is_mxrec = ctx.is_mxrec
-        if is_mxrec:
-            grad_dense = torch.ops.mxrec.jagged_to_padded_dense(
-                values=grad_out0.to(DEVICE),
-                offsets=offsets,
-                max_lengths=max([max_len]),
-                padding_value=0.0,
-            )
-        else:
-            grad_dense = torch.ops.fbgemm.jagged_to_padded_dense(
-                values=grad_out0.to(DEVICE),
-                offsets=offsets,
-                max_lengths=max([max_len]),
-                padding_value=0.0,
-            )
+        grad_dense = torch.ops.fbgemm.jagged_to_padded_dense(
+            values=grad_out0.to(DEVICE),
+            offsets=offsets,
+            max_lengths=max([max_len]),
+            padding_value=0.0,
+        )
         return grad_dense, None, None, None
 
 
-def get_result(device, denses, offsets, types, use_output_size=False, is_mxrec=False):
+def get_result(device, dense, offsets, types, use_output_size=False):
     """获取指定设备上的算子执行结果"""
     dense_datatype, offset_datatype = types
-    dense_torch = torch.from_numpy(denses).to(dense_datatype).to(device)
+    dense_torch = torch.from_numpy(dense).to(dense_datatype).to(device)
     offsets_torch = torch.from_numpy(offsets).to(offset_datatype).to(device)
 
     # 计算累积偏移量
@@ -111,18 +96,16 @@ def get_result(device, denses, offsets, types, use_output_size=False, is_mxrec=F
         output_size = jagged_id_offset[-1]
 
     # 执行核心操作：稠密张量→不规则张量
-    if is_mxrec:
-        jagged_embedding = torch.ops.mxrec.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
-    else:
-        jagged_embedding = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
+    jagged_embedding = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)[0]
     return jagged_embedding.cpu()
 
 
 def compare_results(golden_result, npu_result, tolerance=1e-4):
     """比较CPU和NPU的结果"""
     # 检查两个结果的形状是否相同
-    assert golden_result.shape == npu_result.shape, \
+    assert golden_result.shape == npu_result.shape, (
         f"Shape mismatch: golden {golden_result.shape} vs npu {npu_result.shape}"
+    )
 
     # 对所有张量进行数值比较（包括空张量）
     if golden_result.numel() > 0:
@@ -136,13 +119,13 @@ def compare_results(golden_result, npu_result, tolerance=1e-4):
 def generate_test_data(dense_dim0, dense_dim1, dense_dim2, dense_dtype):
     """生成测试数据"""
     if dense_dtype in [torch.bfloat16, torch.float16]:
-        denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
+        dense = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
     elif dense_dtype == torch.int32:
-        denses = np.random.randint(0, 1000, (dense_dim0, dense_dim1, dense_dim2)).astype(np.int32)
+        dense = np.random.randint(0, 1000, (dense_dim0, dense_dim1, dense_dim2)).astype(np.int32)
     else:
-        denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
+        dense = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
     offsets = np.random.randint(0, dense_dim1, dense_dim0)  # 确保 len(offsets) == dense.shape[0]
-    return denses, offsets
+    return dense, offsets
 
 
 def get_tolerance(dense_dtype):
@@ -157,11 +140,11 @@ def get_tolerance(dense_dtype):
         raise ValueError(f"Unsupported data type: {dense_dtype}")
 
 
-def run_test(denses, offsets, types, use_output_size=False, is_mxrec=False):
+def run_test(dense, offsets, types, use_output_size=False):
     """运行测试的核心逻辑"""
     # 获取结果
-    golden_result = get_result(torch.device("cpu"), denses, offsets, types, use_output_size, False)
-    npu_result = get_result(torch.device(DEVICE), denses, offsets, types, use_output_size, is_mxrec)
+    golden_result = get_result(torch.device("cpu"), dense, offsets, types, use_output_size)
+    npu_result = get_result(torch.device(DEVICE), dense, offsets, types, use_output_size)
 
     # 根据数据类型获取相应的容差值
     tolerance = get_tolerance(types[0])
@@ -171,15 +154,14 @@ def run_test(denses, offsets, types, use_output_size=False, is_mxrec=False):
 @pytest.mark.parametrize("dims", DIM_LIST)
 @pytest.mark.parametrize("types", TYPE_LIST)
 @pytest.mark.parametrize("use_output_size", [True, False])  # 测试是否传入 output_size
-@pytest.mark.parametrize("is_mxrec", [True, False])
-def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
+def test_dense_to_jagged(dims, types, use_output_size):
     """基本功能测试"""
     dense_dim0, dense_dim1, dense_dim2 = dims
     # 1. 生成随机输入数据
     dense_datatype, _ = types
-    denses, offsets = generate_test_data(dense_dim0, dense_dim1, dense_dim2, dense_datatype)
+    dense, offsets = generate_test_data(dense_dim0, dense_dim1, dense_dim2, dense_datatype)
 
-    run_test(denses, offsets, types, use_output_size, is_mxrec)
+    run_test(dense, offsets, types, use_output_size)
 
     # 计算实际的output_size
     actual_size = np.sum(offsets)
@@ -190,8 +172,8 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
         output_size = actual_size
 
     # 2. 分别获取CPU和NPU结果
-    golden_result = get_result(torch.device("cpu"), denses, offsets, types, output_size)
-    npu_result = get_result(torch.device(DEVICE), denses, offsets, types, output_size, is_mxrec)
+    golden_result = get_result(torch.device("cpu"), dense, offsets, types, output_size)
+    npu_result = get_result(torch.device(DEVICE), dense, offsets, types, output_size)
 
     # 3. 结果比对（允许1e-4的误差）
     # 正常情况应该完全匹配
@@ -201,7 +183,7 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
     # ===== 反向传播验证 =====
     # 6. 准备可训练参数
     dense_datatype, offset_datatype = types
-    dense_torch = torch.from_numpy(denses).to(dense_datatype).to(DEVICE)
+    dense_torch = torch.from_numpy(dense).to(dense_datatype).to(DEVICE)
     offsets_torch = torch.from_numpy(offsets).to(offset_datatype).to(DEVICE)
 
     # 计算累积偏移量
@@ -211,27 +193,19 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
     input_dense_npu_py = dense_torch.clone().to(torch.float32).to(DEVICE).requires_grad_(True)
 
     # 7. 计算NPU前向传播
-    if is_mxrec:
-        npu_jagged_for_grad = torch.ops.mxrec.dense_to_jagged(
-            input_dense_npu,
-            [jagged_id_offset.to(DEVICE)],
-            output_size
-        )[0]
-    else:
-        npu_jagged_for_grad = torch.ops.fbgemm.dense_to_jagged(
-            input_dense_npu,
-            [jagged_id_offset.to(DEVICE)],
-            output_size
-        )[0]
+    # fmt: off
+    npu_jagged_for_grad, _ = torch.ops.fbgemm.dense_to_jagged(
+        input_dense_npu,
+        [jagged_id_offset.to(DEVICE)],
+        output_size
+    )
 
     # 8. 计算NPU python实现前向传播
-    npu_py_jagged_for_grad = dense_to_jagged_wrapper(
+    npu_py_jagged_for_grad, _ = dense_to_jagged_wrapper(
         input_dense_npu_py,
         [jagged_id_offset.to(DEVICE)],
-        is_mxrec,
         output_size
-    )[0]
-
+    )
     # 9. 生成随机梯度(与输出形状相同)
     grad_output = torch.randn_like(npu_jagged_for_grad)
 
@@ -250,6 +224,7 @@ def test_dense_to_jagged(dims, types, use_output_size, is_mxrec):
         atol=get_tolerance(types[0]),
         rtol=get_tolerance(types[0])
     ), f"NPU python梯度与NPU梯度不匹配\nNPU python梯度:\n{npu_py_grad_input.cpu()}\nNPU梯度:\n{npu_grad_input.cpu()}"
+    # fmt: on
 
 
 @pytest.mark.parametrize("dims", EDGE_CASE_DIMS)
@@ -260,33 +235,33 @@ def test_dense_to_jagged_edge_cases(dims, dense_dtype, offset_dtype):
     dense_dim0, dense_dim1, dense_dim2 = dims
 
     # 生成测试数据
-    denses, offsets = generate_test_data(dense_dim0, dense_dim1, dense_dim2, dense_dtype)
+    dense, offsets = generate_test_data(dense_dim0, dense_dim1, dense_dim2, dense_dtype)
     types = (dense_dtype, offset_dtype)
 
-    run_test(denses, offsets, types)
+    run_test(dense, offsets, types)
 
 
 def test_dense_to_jagged_empty_offsets():
     """测试空偏移量的情况"""
     # 创建空的偏移量 - 确保 len(offsets) == dense.shape[0]
-    denses = np.random.randn(0, 10, 8).astype(np.float32)  # 0个batch
+    dense = np.random.randn(0, 10, 8).astype(np.float32)  # 0个batch
     offsets = np.array([])  # 空偏移量
     types = (torch.float32, torch.int64)
 
     with pytest.raises(RuntimeError, match="offset tensor must be non-empty"):
-        run_test(denses, offsets, types)
+        run_test(dense, offsets, types)
 
 
 def test_dense_to_jagged_large_offsets():
     """测试大偏移量的情况"""
     # 创建大的偏移量
     dense_dim0 = 5
-    denses = np.random.randn(dense_dim0, 100, 16).astype(np.float32)
+    dense = np.random.randn(dense_dim0, 100, 16).astype(np.float32)
     # 创建较大的偏移量，但不超过dense_dim1
     offsets = np.random.randint(0, 100, dense_dim0)  # 确保 len(offsets) == dense.shape[0]
     types = (torch.float32, torch.int64)
 
-    run_test(denses, offsets, types)
+    run_test(dense, offsets, types)
 
 
 @pytest.mark.parametrize("dense_dtype", [torch.bfloat16, torch.float16])
@@ -294,11 +269,11 @@ def test_bf16_fp16_precision(dense_dtype):
     """专门测试BF16和FP16精度"""
     # 创建特定测试数据
     dense_dim0 = 10
-    denses = np.random.randn(dense_dim0, 50, 8).astype(np.float32)
+    dense = np.random.randn(dense_dim0, 50, 8).astype(np.float32)
     offsets = np.random.randint(0, 50, dense_dim0)  # 确保 len(offsets) == dense.shape[0]
     types = (dense_dtype, torch.int64)
 
-    run_test(denses, offsets, types)
+    run_test(dense, offsets, types)
 
 
 @pytest.mark.parametrize("dense_dtype", [torch.int32])
@@ -307,22 +282,22 @@ def test_int32_dense_precision(dense_dtype, offset_dtype):
     """专门测试int32 dense精度"""
     # 创建特定测试数据
     dense_dim0 = 10
-    denses = np.random.randint(0, 1000, (dense_dim0, 50, 8)).astype(np.int32)
+    dense = np.random.randint(0, 1000, (dense_dim0, 50, 8)).astype(np.int32)
     offsets = np.random.randint(0, 50, dense_dim0)  # 确保 len(offsets) == dense.shape[0]
     types = (dense_dtype, offset_dtype)
 
-    run_test(denses, offsets, types)
+    run_test(dense, offsets, types)
 
 
 def test_dense_to_jagged_forward_npu_fbgemm_call():
     """测试通过fbgemm.dense_to_jagged_forward调用dense_to_jagged_forward_npu函数"""
     # 准备测试数据
     dense_dim0, dense_dim1, dense_dim2 = 10, 20, 8
-    denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
+    dense = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
     offsets = np.random.randint(0, dense_dim1, dense_dim0)
 
     # 将数据移到NPU设备
-    dense_torch = torch.from_numpy(denses).to(torch.float32).to(DEVICE)
+    dense_torch = torch.from_numpy(dense).to(torch.float32).to(DEVICE)
     offsets_torch = torch.from_numpy(offsets).to(torch.int64).to(DEVICE)
 
     # 计算累积偏移量
@@ -332,8 +307,7 @@ def test_dense_to_jagged_forward_npu_fbgemm_call():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged_forward
-    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -345,11 +319,11 @@ def test_dense_to_jagged_forward_npu_mxrec_call():
     """测试通过mxrec.dense_to_jagged_forward调用dense_to_jagged_forward_npu函数"""
     # 准备测试数据
     dense_dim0, dense_dim1, dense_dim2 = 10, 20, 8
-    denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
+    dense = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
     offsets = np.random.randint(0, dense_dim1, dense_dim0)
 
     # 将数据移到NPU设备
-    dense_torch = torch.from_numpy(denses).to(torch.float32).to(DEVICE)
+    dense_torch = torch.from_numpy(dense).to(torch.float32).to(DEVICE)
     offsets_torch = torch.from_numpy(offsets).to(torch.int64).to(DEVICE)
 
     # 计算累积偏移量
@@ -359,8 +333,7 @@ def test_dense_to_jagged_forward_npu_mxrec_call():
     output_size = jagged_id_offset[-1]
 
     # 通过mxrec调用dense_to_jagged_forward
-    jagged_embedding = torch.ops.mxrec.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.mxrec.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -372,11 +345,11 @@ def test_dense_to_jagged_forward_npu_int32_dense():
     """测试int32类型dense张量的处理"""
     # 准备测试数据
     dense_dim0, dense_dim1, dense_dim2 = 10, 20, 8
-    denses = np.random.randint(0, 1000, (dense_dim0, dense_dim1, dense_dim2)).astype(np.int32)
+    dense = np.random.randint(0, 1000, (dense_dim0, dense_dim1, dense_dim2)).astype(np.int32)
     offsets = np.random.randint(0, dense_dim1, dense_dim0)
 
     # 将数据移到NPU设备
-    dense_torch = torch.from_numpy(denses).to(torch.int32).to(DEVICE)
+    dense_torch = torch.from_numpy(dense).to(torch.int32).to(DEVICE)
     offsets_torch = torch.from_numpy(offsets).to(torch.int64).to(DEVICE)
 
     # 计算累积偏移量
@@ -386,8 +359,7 @@ def test_dense_to_jagged_forward_npu_int32_dense():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged_forward处理int32类型
-    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding = torch.ops.fbgemm.dense_to_jagged_forward(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None
@@ -400,11 +372,11 @@ def test_dense_to_jagged_npu_fbgemm_call():
     """测试通过fbgemm.dense_to_jagged调用dense_to_jagged_npu函数"""
     # 准备测试数据
     dense_dim0, dense_dim1, dense_dim2 = 10, 20, 8
-    denses = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
+    dense = np.random.randn(dense_dim0, dense_dim1, dense_dim2).astype(np.float32)
     offsets = np.random.randint(0, dense_dim1, dense_dim0)
 
     # 将数据移到NPU设备
-    dense_torch = torch.from_numpy(denses).to(torch.float32).to(DEVICE)
+    dense_torch = torch.from_numpy(dense).to(torch.float32).to(DEVICE)
     offsets_torch = torch.from_numpy(offsets).to(torch.int64).to(DEVICE)
 
     # 计算累积偏移量
@@ -414,8 +386,7 @@ def test_dense_to_jagged_npu_fbgemm_call():
     output_size = jagged_id_offset[-1]
 
     # 通过fbgemm调用dense_to_jagged
-    jagged_embedding, offset_list = torch.ops.fbgemm.dense_to_jagged(
-        dense_torch, [jagged_id_offset], output_size)
+    jagged_embedding, offset_list = torch.ops.fbgemm.dense_to_jagged(dense_torch, [jagged_id_offset], output_size)
 
     # 验证结果
     assert jagged_embedding is not None

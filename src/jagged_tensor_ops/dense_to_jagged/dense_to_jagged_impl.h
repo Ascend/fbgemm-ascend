@@ -12,22 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
         limitations under the License.
 ==============================================================================*/
-#ifndef JAGGED_TO_PADDED_DENSE_IMPL_H
-#define JAGGED_TO_PADDED_DENSE_IMPL_H
-#include "fbgemm_ascend/jagged_tensor_ops.h"
 
+#ifndef FBGEMM_ASCEND_DENSE_TO_JAGGED_IMPL_H
+#define FBGEMM_ASCEND_DENSE_TO_JAGGED_IMPL_H
 #include <torch/csrc/autograd/custom_function.h>
 #include <torch/library.h>
 
 #include "../../common/pytorch_npu_helper.hpp"
 #include "../../common/common_utils.h"
+#include "fbgemm_ascend/jagged_tensor_ops.h"
+
 using torch::autograd::AutogradContext;
 using torch::autograd::Function;
 using torch::autograd::Variable;
 using tensor_list = std::vector<at::Tensor>;
 using namespace at;
+using fbgemm_npu::EXPECTED_DIM_1D;
+using fbgemm_npu::EXPECTED_DIM_2D;
+using fbgemm_npu::EXPECTED_DIM_3D;
 
-at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values, const at::Tensor& offsets,
-                                          const int64_t max_lengths, const double padding_value);
+class DenseToJaggedFunction : public torch::autograd::Function<DenseToJaggedFunction> {
+public:
+    static at::Tensor forward(AutogradContext* ctx, const at::Tensor& dense, const tensor_list& offsets,
+                              const c10::optional<int64_t> total_L);
 
-#endif  // JAGGED_TO_PADDED_DENSE_IMPL_H
+    static tensor_list backward(AutogradContext* ctx, tensor_list grad_outputs);
+};
+
+#endif  // FBGEMM_ASCEND_DENSE_TO_JAGGED_IMPL_H
