@@ -1,0 +1,183 @@
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+        limitations under the License.
+==============================================================================*/
+
+#include "float_or_half_to_fused8_bit_rowwise_quantized_tiling.h"
+
+#include "register/op_def_registry.h"
+#include "tiling/platform/platform_ascendc.h"
+#include "ops_log.h"
+
+namespace optiling {
+enum class DataType : int64_t {
+    FLOAT = 0,
+    FLOAT16 = 1,
+    BFLOAT16 = 2,
+    UNKNOWN = 3
+};
+
+inline int64_t ConvertGeDataTypeToOptiling(ge::DataType geType)
+{
+    switch (geType) {
+        case ge::DT_FLOAT:
+            return static_cast<int64_t>(DataType::FLOAT);
+        case ge::DT_FLOAT16:
+            return static_cast<int64_t>(DataType::FLOAT16);
+        case ge::DT_BF16:
+            return static_cast<int64_t>(DataType::BFLOAT16);
+        default:
+            OPS_LOG_E("[ERROR]", "Unknown data type.");
+            return static_cast<int64_t>(DataType::UNKNOWN);
+    }
+}
+
+static ge::graphStatus TilingFunc(gert::TilingContext* context)
+{
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    OPS_LOG_E_IF_NULL("input_data", context->GetInputTensor(0), return ge::GRAPH_FAILED);
+
+    auto ascendPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    size_t* currentWorkspace = context->GetWorkspaceSizes(1);
+    size_t systemWorkspacesSize = ascendPlatform.GetLibApiWorkSpaceSize();
+    currentWorkspace[0] = systemWorkspacesSize;
+    size_t coreNum = ascendPlatform.GetCoreNumAiv();
+    if (coreNum == 0) {
+        OPS_LOG_E("[ERROR]", "ai core num is zero.");
+        return ge::GRAPH_FAILED;
+    }
+
+    uint64_t ubCanUsed;
+    ascendPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubCanUsed);
+
+    const auto inputShape = context->GetInputShape(0)->GetStorageShape();
+    uint32_t dimNum = inputShape.GetDimNum();
+    int64_t cols = inputShape.GetDim(dimNum - 1);
+    int64_t rows = 1;
+    for (uint32_t i = 0; i < dimNum - 1; ++i) {
+        rows *= inputShape.GetDim(i);
+    }
+    int64_t ncolsAligned = (cols + 4 - 1) / 4 * 4;  // 输出的cols需要4字节对齐
+    int64_t outputCols = ncolsAligned + 2 * sizeof(float);
+
+    const auto inputTensor = context->GetInputTensor(0);
+    const auto inputDataType = inputTensor->GetDataType();
+    int64_t dtype = optiling::ConvertGeDataTypeToOptiling(inputDataType);
+
+    FloatOrHalfToFused8BitRowwiseQuantizedTilingData tiling;
+    tiling.set_rows(rows);
+    tiling.set_cols(cols);
+    tiling.set_outputCols(outputCols);
+    tiling.set_ncolsAligned(ncolsAligned);
+    tiling.set_dtype(dtype);
+    tiling.set_coreNum(coreNum);
+
+    // asc_reduce_min/max 要求完整 warp，threadsPerRow 固定为 32
+    int32_t threadsPerRow = 32;
+    tiling.set_threadsPerRow(threadsPerRow);
+
+    int32_t rowsPerBlock = 1024 / threadsPerRow;
+    int32_t maxRowsBySharedMem = static_cast<int32_t>(ubCanUsed / (2 * sizeof(float)));
+    rowsPerBlock = std::min(rowsPerBlock, maxRowsBySharedMem);
+    if (rowsPerBlock < 1)
+        rowsPerBlock = 1;
+
+    // 动态 rowsPerBlock 避免 block 内空转
+    int32_t maxRowsPerBlockForCoverage = static_cast<int32_t>((rows + static_cast<int64_t>(coreNum) - 1) / coreNum);
+    if (maxRowsPerBlockForCoverage > 0 && maxRowsPerBlockForCoverage < rowsPerBlock) {
+        rowsPerBlock = maxRowsPerBlockForCoverage;
+    }
+
+    // Ensure blockDim is large enough to amortize SIMT launch overhead.
+    // Small blockDim (<256 threads) leads to poor performance on A5.
+    // For rows < 64, keep current behavior; for medium rows, raise lower bound.
+    int32_t minRowsPerBlock = 1;
+    if (rows >= 64 && rows < 1024) {
+        minRowsPerBlock = 8;
+    }
+    rowsPerBlock = std::max(rowsPerBlock, minRowsPerBlock);
+    if (rowsPerBlock > rows) {
+        rowsPerBlock = static_cast<int32_t>(rows);
+    }
+
+    int32_t totalThreads = threadsPerRow * rowsPerBlock;
+    tiling.set_rowsPerBlock(rowsPerBlock);
+    tiling.set_totalThreads(totalThreads);
+
+    // 动态 block 数：刚好覆盖所有行，避免大量空转 block
+    int32_t usedBlocks = static_cast<int32_t>((rows + rowsPerBlock - 1) / rowsPerBlock);
+    if (usedBlocks > static_cast<int32_t>(coreNum)) {
+        usedBlocks = static_cast<int32_t>(coreNum);
+    }
+    if (usedBlocks < 1) {
+        usedBlocks = 1;
+    }
+
+    context->SetBlockDim(usedBlocks);
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
+    return ge::GRAPH_SUCCESS;
+}
+}  // namespace optiling
+
+namespace ge {
+static ge::graphStatus InferShape(gert::InferShapeContext* context)
+{
+    OPS_LOG_E_IF_NULL("context", context, return ge::GRAPH_FAILED);
+    const gert::Shape* inputShape = context->GetInputShape(0);
+    OPS_LOG_E_IF_NULL("inputShape", inputShape, return ge::GRAPH_FAILED);
+    int64_t cols = inputShape->GetDim(inputShape->GetDimNum() - 1);
+    int64_t ncolsAligned = (cols + 4 - 1) / 4 * 4;
+    int64_t outputCols = ncolsAligned + 2 * sizeof(float);
+
+    const auto yShape = context->GetOutputShape(0);
+    uint32_t dimNum = inputShape->GetDimNum();
+    yShape->SetDimNum(dimNum);
+    for (uint32_t i = 0; i < dimNum - 1; ++i) {
+        yShape->SetDim(i, inputShape->GetDim(i));
+    }
+    yShape->SetDim(dimNum - 1, outputCols);
+    return GRAPH_SUCCESS;
+}
+}  // namespace ge
+
+namespace ops {
+class FloatOrHalfToFused8BitRowwiseQuantized : public OpDef {
+public:
+    explicit FloatOrHalfToFused8BitRowwiseQuantized(const char* name) : OpDef(name)
+    {
+        this->Input("inputData")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT16, ge::DT_BF16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+        this->Output("y")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_UINT8, ge::DT_UINT8, ge::DT_UINT8})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND});
+
+        this->SetInferShape(ge::InferShape);
+
+        this->AICore().SetTiling(optiling::TilingFunc);
+        OpAICoreConfig aicore_config;
+        aicore_config.DynamicCompileStaticFlag(true)
+            .ExtendCfgInfo("jitCompile.flag", "static_false,dynamic_false")
+            .ExtendCfgInfo("coreType.value", "AiCore")
+            .ExtendCfgInfo("prebuildPattern.value", "Opaque");
+        this->AICore().AddConfig("ascend950", aicore_config);
+    }
+};
+
+OP_ADD(FloatOrHalfToFused8BitRowwiseQuantized);
+}  // namespace ops
