@@ -28,6 +28,7 @@ set(ASCENDC_A5_ONLY_OPS
     direct_mapped_lru_cache_find_uncached
     direct_mapped_lru_cache_insert_byte
     float_or_half_to_fused8_bit_rowwise_quantized
+    fused8_bit_rowwise_quantized_to_float_or_half
 )
 
 set(ASCENDC_A3_OPS
@@ -151,6 +152,7 @@ set(_ASCENDC_OPS
     "direct_mapped_lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached"
     "direct_mapped_lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte"
     "float_or_half_to_fused8_bit_rowwise_quantized|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_or_half_to_fused8_bit_rowwise_quantized"
+    "fused8_bit_rowwise_quantized_to_float_or_half|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/fused8_bit_rowwise_quantized_to_float_or_half"
 )
 
 foreach(_variant ${FBGEMM_ASCEND_BUILD_VERS})
@@ -249,4 +251,5 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/direct_mapped_lxu_cache_lookup.cpp
     src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/direct_mapped_lru_cache_populate_byte.cpp
     src/quantize_ops/float_or_half_to_fused8_bit_rowwise_quantized/float_or_half_to_fused8_bit_rowwise_quantized.cpp
+    src/quantize_ops/fused8_bit_rowwise_quantized_to_float_or_half/fused8_bit_rowwise_quantized_to_float_or_half.cpp
 )
