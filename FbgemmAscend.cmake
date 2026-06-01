@@ -19,6 +19,7 @@ set(ASCENDC_A5_ONLY_OPS
     lru_cache_insert_byte
     group_index_select_dim0
     group_index_select_dim0_backward
+    jagged_dense_elementwise_binary_jagged_output
     float_to_bfloat16_quantized
     bfloat16_quantized_to_float
     linearize_cache_indices_from_row_idx
@@ -127,6 +128,7 @@ set(_ASCENDC_OPS
     "segment_sum_csr|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/segment_sum_csr"
     "init_address_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/intraining_embedding_pruning_ops/init_address_lookup"
     "dense_to_jagged|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/dense_to_jagged"
+    "jagged_dense_elementwise_binary_jagged_output|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_dense_elementwise_binary_jagged_output"
     "jagged_to_padded_dense|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense"
     "jagged_to_padded_dense_v2|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense_v2"
     "select_dim1_to_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/select_dim1_to_permute"
@@ -221,6 +223,7 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/jagged_tensor_ops/jagged_2d_to_dense/jagged_2d_to_dense.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense/jagged_to_padded_dense_impl.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense/jagged_to_padded_dense.cpp
+    src/jagged_tensor_ops/jagged_dense_elementwise_binary_jagged_output/jagged_dense_elementwise_binary_jagged_output.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_impl_v2.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v2.cpp
     src/jagged_tensor_ops/jagged_dense_elementwise/jagged_dense_elementwise.cpp
