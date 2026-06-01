@@ -30,7 +30,11 @@ from typing import Callable, Optional, TypeVar
 
 import numpy as np
 import torch
+import torch_npu  # noqa F401
 import hypothesis.strategies as st
+
+import fbgemm_ascend  # noqa F401
+import fbgemm_gpu  # noqa F401
 from fbgemm_gpu.split_embedding_configs import FP8QuantizationConfig, SparseType
 from fbgemm_gpu import split_table_batched_embeddings_ops_common
 from fbgemm_gpu import split_table_batched_embeddings_ops_training
