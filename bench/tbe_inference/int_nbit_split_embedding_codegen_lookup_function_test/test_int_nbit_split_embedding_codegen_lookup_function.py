@@ -3,16 +3,15 @@
 # Copyright 2025. Huawei Technologies Co.,Ltd. All rights reserved.
 import logging
 import random
-import sysconfig
 from dataclasses import dataclass
 from typing import List, Tuple, Optional
 
 import numpy as np
 import pytest
 import torch
-import torch_npu
+import torch_npu  # noqa: F401
 
-import fbgemm_ascend
+import fbgemm_ascend  # noqa: F401
 from fbgemm_gpu.split_embedding_configs import SparseType
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import EmbeddingLocation, PoolingMode
 from fbgemm_gpu.split_table_batched_embeddings_ops_inference import (
@@ -21,6 +20,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops_inference import (
 from fbgemm_gpu.tbe.utils import generate_requests, round_up
 
 DEVICE = "npu:0"
+INT8_QPARAMS_BYTES = 8
 
 # 配置日志
 logging.getLogger().setLevel(logging.INFO)
@@ -37,17 +37,6 @@ def set_seed(seed):
 set_seed(10000)
 
 
-def _tensor_stats(tensor: torch.Tensor) -> str:
-    flat = tensor.detach().cpu()
-    if flat.numel() == 0:
-        return "shape={}, empty tensor".format(tuple(flat.shape))
-    return (
-        f"shape={tuple(flat.shape)}, min={flat.min().item():.6f}, "
-        f"max={flat.max().item():.6f}, mean={flat.float().mean().item():.6f}, "
-        f"std={flat.float().std(unbiased=False).item():.6f}"
-    )
-
-
 def _print_debug(golden: torch.Tensor, test: torch.Tensor, rtol: float = 1e-4, atol: float = 1e-4) -> None:
     golden_flat = golden.detach().cpu().flatten()
     test_flat = test.detach().cpu().flatten()
@@ -62,8 +51,13 @@ def _print_debug(golden: torch.Tensor, test: torch.Tensor, rtol: float = 1e-4, a
 
     if mismatch_indices.numel() > 0:
         num_mismatches = mismatch_indices.numel()
-        logging.info(f"Found {num_mismatches} mismatched elements "
-                     f"(total: {golden_flat.numel()}, rtol={rtol}, atol={atol})")
+        logging.info(
+            "Found %s mismatched elements (total: %s, rtol=%s, atol=%s)",
+            num_mismatches,
+            golden_flat.numel(),
+            rtol,
+            atol,
+        )
 
         # 按顺序打印前20个错误
         max_print = min(20, num_mismatches)
@@ -76,20 +70,171 @@ def _print_debug(golden: torch.Tensor, test: torch.Tensor, rtol: float = 1e-4, a
             test_val = test_flat[idx_val].item()
             abs_diff_val = abs_diff[idx_val].item()
             rel_diff_val = rel_diff[idx_val].item()
-            logging.info(f"  [{idx_val}]: golden={golden_val:.6f}, test={test_val:.6f}, "
-                        f"abs_diff={abs_diff_val:.6e}, rel_diff={rel_diff_val:.6e}")
+            logging.info(
+                "  [%s]: golden=%.6f, test=%.6f, abs_diff=%.6e, rel_diff=%.6e",
+                idx_val,
+                golden_val,
+                test_val,
+                abs_diff_val,
+                rel_diff_val,
+            )
 
         if num_mismatches > max_print:
-            logging.info(f"... and {num_mismatches - max_print} more mismatches (not shown)")
+            logging.info("... and %s more mismatches (not shown)", num_mismatches - max_print)
     else:
         logging.info("No mismatches found (within tolerance)")
 
 
+def _print_nonfinite_mismatches(
+    golden: torch.Tensor,
+    test: torch.Tensor,
+    rtol: float = 1e-4,
+    atol: float = 1e-4,
+    max_print: int = 20,
+) -> None:
+    gold = golden.detach().cpu()
+    test_cpu = test.detach().cpu()
+    close_mask = torch.isclose(test_cpu, gold, rtol=rtol, atol=atol, equal_nan=True)
+    mismatch = torch.nonzero(~close_mask, as_tuple=False)
+
+    if mismatch.numel() == 0:
+        logging.info("No mismatches found by isclose(equal_nan=True)")
+        return
+
+    logging.info(
+        "Found %s mismatches with equal_nan=True (showing first %s)",
+        mismatch.shape[0],
+        min(max_print, mismatch.shape[0]),
+    )
+
+    for idx_tensor in mismatch[:max_print]:
+        idx = tuple(idx_tensor.tolist())
+        gv = gold[idx]
+        tv = test_cpu[idx]
+        logging.info(
+            "mismatch %s: golden=%s test=%s "
+            "gold.isnan=%s test.isnan=%s "
+            "gold.isposinf=%s test.isposinf=%s "
+            "gold.isneginf=%s test.isneginf=%s "
+            "gold.isfinite=%s test.isfinite=%s",
+            idx,
+            gv.item(),
+            tv.item(),
+            torch.isnan(gv).item(),
+            torch.isnan(tv).item(),
+            torch.isposinf(gv).item(),
+            torch.isposinf(tv).item(),
+            torch.isneginf(gv).item(),
+            torch.isneginf(tv).item(),
+            torch.isfinite(gv).item(),
+            torch.isfinite(tv).item(),
+        )
+
+
+def _extract_fused8bit_rowwise_scales(quantized: torch.Tensor) -> torch.Tensor:
+    quantized_cpu = quantized.detach().cpu().contiguous()
+    qparams = quantized_cpu[:, -INT8_QPARAMS_BYTES:].contiguous().view(torch.float32)
+    return qparams[:, 0].contiguous()
+
+
+def _build_int8_golden_output_with_atol(
+    fp32_output: torch.Tensor,
+    ref_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    pooling_mode: PoolingMode,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    fp32_output = fp32_output.cpu().to(torch.float32).contiguous()
+
+    if pooling_mode == PoolingMode.NONE:
+        quantized = torch.ops.fbgemm.FloatToFused8BitRowwiseQuantized(fp32_output.contiguous()).contiguous()
+        dequantized = torch.ops.fbgemm.Fused8BitRowwiseQuantizedToFloat(quantized).contiguous()
+        scales = _extract_fused8bit_rowwise_scales(quantized)
+        return dequantized, scales.unsqueeze(1).expand_as(dequantized).contiguous()
+
+    d_offsets = ref_module.D_offsets.cpu().to(torch.int64)
+    dequantized = []
+    atols = []
+    for t in range(d_offsets.numel() - 1):
+        d_start = int(d_offsets[t].item())
+        d_end = int(d_offsets[t + 1].item())
+        table = fp32_output[:, d_start:d_end].contiguous()
+        quantized = torch.ops.fbgemm.FloatToFused8BitRowwiseQuantized(table).contiguous()
+        dequantized_table = torch.ops.fbgemm.Fused8BitRowwiseQuantizedToFloat(quantized).contiguous()
+        scales = _extract_fused8bit_rowwise_scales(quantized)
+        dequantized.append(dequantized_table)
+        atols.append(scales.unsqueeze(1).expand_as(dequantized_table).contiguous())
+    return torch.cat(dequantized, dim=1), torch.cat(atols, dim=1)
+
+
+def _dequantize_int8_test_output_with_atol(
+    output: torch.Tensor,
+    ref_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    pooling_mode: PoolingMode,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    output_cpu = output.detach().cpu().contiguous()
+
+    if pooling_mode == PoolingMode.NONE:
+        dequantized = torch.ops.fbgemm.Fused8BitRowwiseQuantizedToFloat(output_cpu).contiguous()
+        scales = _extract_fused8bit_rowwise_scales(output_cpu)
+        return dequantized, scales.unsqueeze(1).expand_as(dequantized).contiguous()
+
+    d_offsets = ref_module.D_offsets.cpu().to(torch.int64)
+    split_sizes = []
+    for t in range(d_offsets.numel() - 1):
+        dim = int(d_offsets[t + 1].item() - d_offsets[t].item())
+        split_sizes.append(dim + INT8_QPARAMS_BYTES)
+    per_table = torch.split(output_cpu, split_sizes, dim=1)
+    dequantized = []
+    atols = []
+    for table in per_table:
+        dequantized_table = torch.ops.fbgemm.Fused8BitRowwiseQuantizedToFloat(table.contiguous()).contiguous()
+        scales = _extract_fused8bit_rowwise_scales(table)
+        dequantized.append(dequantized_table)
+        atols.append(scales.unsqueeze(1).expand_as(dequantized_table).contiguous())
+    return torch.cat(dequantized, dim=1), torch.cat(atols, dim=1)
+
+
+def _assert_close_with_tensor_atol(
+    actual: torch.Tensor,
+    expected: torch.Tensor,
+    atol_tensor: torch.Tensor,
+    rtol: float,
+    equal_nan: bool = True,
+) -> None:
+    actual_cpu = actual.detach().cpu()
+    expected_cpu = expected.detach().cpu()
+    atol_cpu = atol_tensor.detach().cpu()
+
+    abs_diff = (actual_cpu - expected_cpu).abs()
+    tol_tensor = atol_cpu + rtol * expected_cpu.abs()
+    close_mask = abs_diff <= tol_tensor
+
+    finite_equal = torch.isfinite(actual_cpu) & torch.isfinite(expected_cpu) & close_mask
+    posinf_equal = torch.isposinf(actual_cpu) & torch.isposinf(expected_cpu)
+    neginf_equal = torch.isneginf(actual_cpu) & torch.isneginf(expected_cpu)
+    if equal_nan:
+        nan_equal = torch.isnan(actual_cpu) & torch.isnan(expected_cpu)
+    else:
+        nan_equal = torch.zeros_like(close_mask, dtype=torch.bool)
+
+    all_close = finite_equal | posinf_equal | neginf_equal | nan_equal
+    if torch.all(all_close):
+        return
+
+    mismatch = torch.nonzero(~all_close, as_tuple=False)
+    max_diff = abs_diff[~all_close].max().item()
+    raise AssertionError(
+        "Tensor-likes are not close!\n\n"
+        f"Mismatched elements: {mismatch.shape[0]} / {expected_cpu.numel()} "
+        f"({100.0 * mismatch.shape[0] / expected_cpu.numel():.1f}%)\n"
+        f"Greatest absolute difference: {max_diff}"
+    )
+
+
 def call_operator(
-        op: IntNBitTableBatchedEmbeddingBagsCodegen,
-        indices: torch.Tensor,
-        offsets: torch.Tensor,
-        per_sample_weights: torch.Tensor | None = None,
+    op: IntNBitTableBatchedEmbeddingBagsCodegen,
+    indices: torch.Tensor,
+    offsets: torch.Tensor,
+    per_sample_weights: torch.Tensor | None = None,
 ) -> torch.Tensor:
     return torch.ops.fbgemm.int_nbit_split_embedding_codegen_lookup_function(
         dev_weights=op.weights_dev,
@@ -119,19 +264,16 @@ def call_operator(
 
 
 def _build_module(
-        *,
-        embedding_specs: List[Tuple[int, int, SparseType]],
-        pooling_mode: PoolingMode,
-        output_dtype: SparseType,
-        indices_dtype: torch.dtype,
-        device: str,
+    *,
+    embedding_specs: List[Tuple[int, int, SparseType]],
+    pooling_mode: PoolingMode,
+    output_dtype: SparseType,
+    indices_dtype: torch.dtype,
+    device: str,
 ) -> IntNBitTableBatchedEmbeddingBagsCodegen:
     is_cpu = device.startswith("cpu")
     location = EmbeddingLocation.HOST if is_cpu else EmbeddingLocation.DEVICE
-    specs = [
-        ("table", E, D, wty, location)
-        for (E, D, wty) in embedding_specs
-    ]
+    specs = [("table", E, D, wty, location) for (E, D, wty) in embedding_specs]
     return IntNBitTableBatchedEmbeddingBagsCodegen(
         embedding_specs=specs,
         device=device,
@@ -142,29 +284,124 @@ def _build_module(
 
 
 def _sync_random_weights(
-        ref_module: IntNBitTableBatchedEmbeddingBagsCodegen,
-        test_module: IntNBitTableBatchedEmbeddingBagsCodegen,
-        weight_types: List[SparseType],
+    ref_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    test_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    weight_types: List[SparseType],
 ) -> None:
     ref_module.fill_random_weights()
     test_module.fill_random_weights()
     ref_split = ref_module.split_embedding_weights()
     test_split = test_module.split_embedding_weights()
-    for (ref_w, ref_scale), (test_w, test_scale), _ in zip(ref_split, test_split, weight_types):
+    for (ref_w, ref_scale), (test_w, test_scale), weight_ty in zip(ref_split, test_split, weight_types):
+        if weight_ty == SparseType.FP16:
+            ref_w.copy_(
+                torch.empty_like(ref_w.view(torch.float16), dtype=torch.float16).uniform_(-1.0, 1.0).view(torch.uint8)
+            )
+        elif weight_ty == SparseType.FP32:
+            ref_w.copy_(
+                torch.empty_like(ref_w.view(torch.float32), dtype=torch.float32).uniform_(-1.0, 1.0).view(torch.uint8)
+            )
         test_w.copy_(ref_w)
         if ref_scale is not None and test_scale is not None:
             test_scale.copy_(ref_scale)
 
 
+def _copy_module_weights(
+    src_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    dst_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+) -> None:
+    src_split = src_module.split_embedding_weights()
+    dst_split = dst_module.split_embedding_weights()
+    for (src_w, src_scale), (dst_w, dst_scale) in zip(src_split, dst_split):
+        dst_w.copy_(src_w)
+        if src_scale is not None and dst_scale is not None:
+            dst_scale.copy_(src_scale)
+
+
+def _print_shadow_fp32_debug(
+    *,
+    config: "TestConfig",
+    embedding_specs: List[Tuple[int, int, SparseType]],
+    indices: torch.Tensor,
+    offsets: torch.Tensor,
+    per_sample_weights: Optional[torch.Tensor],
+    ref_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    test_module: IntNBitTableBatchedEmbeddingBagsCodegen,
+    rtol: float,
+    atol: float,
+    max_print: int = 20,
+) -> None:
+    shadow_ref = _build_module(
+        embedding_specs=embedding_specs,
+        pooling_mode=config.pooling_mode,
+        output_dtype=SparseType.FP32,
+        indices_dtype=config.indices_dtype,
+        device="cpu",
+    )
+    shadow_test = _build_module(
+        embedding_specs=embedding_specs,
+        pooling_mode=config.pooling_mode,
+        output_dtype=SparseType.FP32,
+        indices_dtype=config.indices_dtype,
+        device=DEVICE,
+    )
+    shadow_ref.fill_random_weights()
+    shadow_test.fill_random_weights()
+    _copy_module_weights(ref_module, shadow_ref)
+    _copy_module_weights(test_module, shadow_test)
+
+    shadow_golden = shadow_ref(
+        indices=indices,
+        offsets=offsets,
+        per_sample_weights=per_sample_weights,
+    ).cpu()
+    shadow_test_out = call_operator(
+        shadow_test,
+        indices.to(device=DEVICE),
+        offsets.to(device=DEVICE),
+        per_sample_weights.to(device=DEVICE) if per_sample_weights is not None else None,
+    ).cpu()
+
+    close_mask = torch.isclose(shadow_test_out, shadow_golden, rtol=rtol, atol=atol, equal_nan=True)
+    mismatch = torch.nonzero(~close_mask, as_tuple=False)
+    logging.info(
+        "Shadow FP32 mismatches: %d / %d",
+        mismatch.shape[0],
+        shadow_golden.numel(),
+    )
+    for idx_tensor in mismatch[:max_print]:
+        idx = tuple(idx_tensor.tolist())
+        gv = shadow_golden[idx]
+        tv = shadow_test_out[idx]
+        logging.info(
+            "shadow_fp32 %s: golden=%s test=%s "
+            "gold.isnan=%s test.isnan=%s "
+            "gold.isposinf=%s test.isposinf=%s "
+            "gold.isneginf=%s test.isneginf=%s "
+            "gold.isfinite=%s test.isfinite=%s",
+            idx,
+            gv.item(),
+            tv.item(),
+            torch.isnan(gv).item(),
+            torch.isnan(tv).item(),
+            torch.isposinf(gv).item(),
+            torch.isposinf(tv).item(),
+            torch.isneginf(gv).item(),
+            torch.isneginf(tv).item(),
+            torch.isfinite(gv).item(),
+            torch.isfinite(tv).item(),
+        )
+
+
 def _generate_workload(
-        *,
-        B: int,
-        T: int,
-        L: List[int],  # 每张表的bag长度: [L1, L2, ...]
-        tables: List[Tuple[int, int]],  # 每张表的shape: [(E1, D1), (E2, D2), ...]
-        weighted: bool,
-        emulate_pruning: bool = False,
-        indices_dtype: torch.dtype,
+    *,
+    B: int,
+    T: int,
+    L: List[int],  # 每张表的bag长度: [L1, L2, ...]
+    tables: List[Tuple[int, int]],  # 每张表的shape: [(E1, D1), (E2, D2), ...]
+    weighted: bool,
+    emulate_pruning: bool = False,
+    indices_dtype: torch.dtype,
 ):
     """
     生成workload数据，支持每张表使用不同的bag长度
@@ -194,8 +431,15 @@ def _generate_workload(
 
         # 为当前表生成请求
         requests = generate_requests(
-            1, B, 1, L_t, E_t, reuse=0.1, weighted=weighted,
-            emulate_pruning=emulate_pruning, use_cpu=True,
+            1,
+            B,
+            1,
+            L_t,
+            E_t,
+            reuse=0.1,
+            weighted=weighted,
+            emulate_pruning=emulate_pruning,
+            use_cpu=True,
             deterministic_output=True,  # 确保生成可重复的测试数据
         )
 
@@ -236,9 +480,10 @@ def _generate_workload(
 
 
 def _generate_table_config(
-        table_num: int,
-        L: int,
-        is_nobag: bool = False,
+    table_num: int,
+    L: int,
+    weights_ty: SparseType,
+    is_nobag: bool = False,
 ) -> Tuple[List[Tuple[int, int]], List[int]]:
     """
     生成随机表配置
@@ -254,10 +499,23 @@ def _generate_table_config(
     tables = []
     L_list = []
 
+    if weights_ty == SparseType.FP32:
+        max_d_base = 512
+    elif weights_ty == SparseType.INT8:
+        max_d_base = 1023
+    elif weights_ty == SparseType.INT4:
+        max_d_base = 1022
+    elif weights_ty == SparseType.INT2:
+        max_d_base = 1020
+    else:
+        max_d_base = 1024
+
     # nobag模式下，所有表的D维度必须相同，在循环外生成
     if is_nobag:
-        D_base = random.randint(1, 1024)
+        D_base = random.randint(1, max_d_base)
         D = D_base * 4
+    else:
+        D = 0  # 避免 pylint 警告 possibly-used-before-assignment
 
     for _ in range(table_num):
         # 行数：1-20000之间随机选择
@@ -265,7 +523,7 @@ def _generate_table_config(
 
         # 列数：1-1024之间随机选择一个数乘以4（确保是4的倍数，符合FP8对齐要求）
         if not is_nobag:
-            D_base = random.randint(1, 1024)
+            D_base = random.randint(1, max_d_base)
             D = D_base * 4
 
         tables.append((E, D))
@@ -277,9 +535,37 @@ def _generate_table_config(
     return tables, L_list
 
 
+def _generate_mixed_table_config(
+    weight_types: List[SparseType],
+    L: int,
+) -> Tuple[List[Tuple[int, int]], List[int]]:
+    tables = []
+    L_list = []
+
+    for weight_ty in weight_types:
+        if weight_ty == SparseType.FP32:
+            max_d_base = 512
+        elif weight_ty == SparseType.INT8:
+            max_d_base = 1023
+        elif weight_ty == SparseType.INT4:
+            max_d_base = 1022
+        elif weight_ty == SparseType.INT2:
+            max_d_base = 1020
+        else:
+            max_d_base = 1024
+
+        E = random.randint(1, 20000)
+        D = random.randint(1, max_d_base) * 4
+        tables.append((E, D))
+        L_list.append(random.randint(1, L))
+
+    return tables, L_list
+
+
 @dataclass
 class TestConfig:
     """测试配置参数"""
+
     pooling_mode: PoolingMode
     weighted: bool
     weights_ty: SparseType
@@ -290,6 +576,7 @@ class TestConfig:
     L: Optional[int] = None
     tables: Optional[List[Tuple[int, int]]] = None
     L_list: Optional[List[int]] = None
+    weights_ty_list: Optional[List[SparseType]] = None
 
 
 def _run_multi_table_test(config: TestConfig) -> None:
@@ -299,6 +586,11 @@ def _run_multi_table_test(config: TestConfig) -> None:
     Args:
         config: 测试配置参数
     """
+    if config.weights_ty_list is not None:
+        assert config.pooling_mode != PoolingMode.NONE, (
+            "Mixed weights bench only covers pooled modes to match community coverage"
+        )
+
     # 如果提供了预定义的表配置，使用它们；否则随机生成
     if config.tables is not None and config.L_list is not None:
         T = len(config.tables)
@@ -306,23 +598,38 @@ def _run_multi_table_test(config: TestConfig) -> None:
         tables = config.tables
         L_list = config.L_list
     else:
-        assert config.table_num is not None and config.L is not None, \
+        assert config.table_num is not None and config.L is not None, (
             "必须提供table_num和L（随机生成）或tables和L_list（预定义）"
-        is_nobag = (config.pooling_mode == PoolingMode.NONE)
-        tables, L_list = _generate_table_config(config.table_num, config.L, is_nobag=is_nobag)
+        )
+        if config.weights_ty_list is not None:
+            tables, L_list = _generate_mixed_table_config(config.weights_ty_list, config.L)
+        else:
+            is_nobag = config.pooling_mode == PoolingMode.NONE
+            tables, L_list = _generate_table_config(
+                config.table_num,
+                config.L,
+                config.weights_ty,
+                is_nobag=is_nobag,
+            )
         T = len(tables)
+
+    active_weight_types = config.weights_ty_list if config.weights_ty_list is not None else [config.weights_ty] * T
+    assert len(active_weight_types) == T, f"weights_ty_list的长度({len(active_weight_types)})必须等于表的数量({T})"
 
     # 生成embedding_specs，对D进行对齐处理
     embedding_specs = []
-    for E, D in tables:
-        D_aligned = round_up(D, max(config.weights_ty.align_size(), config.output_dtype.align_size()))
-        embedding_specs.append((E, D_aligned, config.weights_ty))
+    for (E, D), weight_ty in zip(tables, active_weight_types):
+        D_aligned = round_up(D, max(weight_ty.align_size(), config.output_dtype.align_size()))
+        embedding_specs.append((E, D_aligned, weight_ty))
 
     # 构建模块
+    ref_output_dtype = (
+        SparseType.FP32 if config.output_dtype in (SparseType.INT8, SparseType.BF16) else config.output_dtype
+    )
     ref_module = _build_module(
         embedding_specs=embedding_specs,
         pooling_mode=config.pooling_mode,
-        output_dtype=config.output_dtype,
+        output_dtype=ref_output_dtype,
         indices_dtype=config.indices_dtype,
         device="cpu",
     )
@@ -335,11 +642,11 @@ def _run_multi_table_test(config: TestConfig) -> None:
     )
 
     # 同步权重
-    _sync_random_weights(ref_module, test_module, [config.weights_ty] * T)
+    _sync_random_weights(ref_module, test_module, active_weight_types)
 
     # 执行测试
     for indices, offsets, per_sample_weights in _generate_workload(
-            B=config.B, T=T, L=L_list, tables=tables, weighted=config.weighted, indices_dtype=config.indices_dtype
+        B=config.B, T=T, L=L_list, tables=tables, weighted=config.weighted, indices_dtype=config.indices_dtype
     ):
         psw = per_sample_weights
         golden_out = ref_module(
@@ -347,39 +654,96 @@ def _run_multi_table_test(config: TestConfig) -> None:
             offsets=offsets,
             per_sample_weights=psw,
         )
+        projected_test_out = test_out = None  # keep scope explicit
+        if config.output_dtype == SparseType.INT8:
+            golden_out, golden_atol = _build_int8_golden_output_with_atol(golden_out, ref_module, config.pooling_mode)
+        elif config.output_dtype == SparseType.BF16:
+            golden_out = golden_out.to(torch.bfloat16)
         indices_npu = indices.to(device=DEVICE)
         offsets_npu = offsets.to(device=DEVICE)
         psw_npu = psw.to(device=DEVICE) if psw is not None else None
         test_out = call_operator(test_module, indices_npu, offsets_npu, psw_npu)
-
-        assert golden_out.shape == test_out.shape
+        if config.output_dtype == SparseType.INT8:
+            projected_test_out, test_atol = _dequantize_int8_test_output_with_atol(
+                test_out, ref_module, config.pooling_mode
+            )
+            assert golden_out.shape == projected_test_out.shape
+        else:
+            assert golden_out.shape == test_out.shape
 
         # 计算容差
         tol = (
-            1e-3 if config.output_dtype == SparseType.FP16
-            else 2 ** -7 if config.output_dtype == SparseType.BF16
-            else 1e-4 if config.output_dtype == SparseType.FP32
+            1e-3
+            if config.output_dtype == SparseType.FP16
+            else 2**-7
+            if config.output_dtype == SparseType.BF16
+            else 1e-4
+            if config.output_dtype == SparseType.FP32
+            else 1e-2
+            if config.output_dtype == SparseType.INT8
             else 0
         )
 
         try:
-            torch.testing.assert_close(test_out.cpu(), golden_out.cpu(), rtol=tol, atol=tol)
+            if config.output_dtype == SparseType.INT8:
+                _assert_close_with_tensor_atol(
+                    projected_test_out,
+                    golden_out.cpu(),
+                    torch.maximum(golden_atol, test_atol),
+                    rtol=tol,
+                    equal_nan=True,
+                )
+            else:
+                torch.testing.assert_close(test_out.cpu(), golden_out.cpu(), rtol=tol, atol=tol, equal_nan=True)
         except AssertionError as err:
-            _print_debug(golden_out, test_out, rtol=tol, atol=tol)
+            debug_test = projected_test_out if config.output_dtype == SparseType.INT8 else test_out
+            _print_debug(golden_out, debug_test, rtol=tol, atol=tol)
+            if config.output_dtype != SparseType.INT8:
+                _print_nonfinite_mismatches(golden_out, test_out, rtol=tol, atol=tol)
+            if config.output_dtype == SparseType.BF16 and config.weights_ty in (SparseType.FP16, SparseType.FP32):
+                _print_shadow_fp32_debug(
+                    config=config,
+                    embedding_specs=embedding_specs,
+                    indices=indices,
+                    offsets=offsets,
+                    per_sample_weights=psw,
+                    ref_module=ref_module,
+                    test_module=test_module,
+                    rtol=1e-4,
+                    atol=1e-4,
+                )
             raise err
 
 
-@pytest.mark.parametrize("pooling_mode", [PoolingMode.SUM, PoolingMode.MEAN, PoolingMode.NONE])
-@pytest.mark.parametrize("weighted", [True, False])
-@pytest.mark.parametrize("indices_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("output_dtype", [SparseType.FP16, SparseType.FP32, SparseType.BF16])
+POOLING_CASES = [
+    (PoolingMode.SUM, False, torch.int32),
+    (PoolingMode.SUM, True, torch.int32),
+    (PoolingMode.SUM, False, torch.int64),
+    (PoolingMode.SUM, True, torch.int64),
+    (PoolingMode.MEAN, False, torch.int32),
+    (PoolingMode.MEAN, True, torch.int32),
+    (PoolingMode.MEAN, False, torch.int64),
+    (PoolingMode.MEAN, True, torch.int64),
+]
+
+NOBAG_CASES = [
+    (PoolingMode.NONE, False, torch.int32),
+]
+
+FORWARD_CASES = POOLING_CASES + NOBAG_CASES
+
+
+@pytest.mark.parametrize("forward_case", FORWARD_CASES)
+@pytest.mark.parametrize("output_dtype", [SparseType.FP16, SparseType.FP32, SparseType.BF16, SparseType.INT8])
+@pytest.mark.parametrize(
+    "weights_ty", [SparseType.FP8, SparseType.FP16, SparseType.FP32, SparseType.INT8, SparseType.INT4, SparseType.INT2]
+)
 @pytest.mark.parametrize("table_num", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 def test_random_multi_table_forward(
-        pooling_mode: PoolingMode,
-        weighted: bool,
-        indices_dtype: torch.dtype,
-        output_dtype: SparseType,
-        table_num: int,
+    forward_case: Tuple[PoolingMode, bool, torch.dtype],
+    output_dtype: SparseType,
+    weights_ty: SparseType,
+    table_num: int,
 ) -> None:
     """
     统一的多表测试用例，支持bag和nobag模式
@@ -388,18 +752,14 @@ def test_random_multi_table_forward(
     - 每张表的shape随机生成：行数在1-20000之间，列数是1-1024之间随机数乘以4（确保是4的倍数）
     - 每张表的bag长度从1-L之间随机选择
     - nobag模式下，所有表的D维度必须相同
-    - nobag模式下，weighted必须为False，indices_dtype必须为int32（通过参数化限制）
+    - 只参数化有效的(pooling_mode, weighted, indices_dtype)组合
     """
-    # nobag模式的限制检查
     default_B = 64
     default_L = 100
-    weights_ty = SparseType.FP8
+    pooling_mode, weighted, indices_dtype = forward_case
 
-    if pooling_mode == PoolingMode.NONE:
-        if weighted:
-            pytest.skip("nobag mode does not support weighted")
-        if indices_dtype != torch.int32:
-            pytest.skip("nobag mode only supports int32 indices")
+    if weights_ty == SparseType.INT2 and output_dtype == SparseType.FP32:
+        pytest.skip("INT2 + FP32 output matches GPU test skip")
 
     config = TestConfig(
         pooling_mode=pooling_mode,
@@ -414,74 +774,61 @@ def test_random_multi_table_forward(
     _run_multi_table_test(config)
 
 
-# Bag模式的表配置（支持不同D维度）
-BAG_TABLES = [
-    [(1000, 16), (2000, 16)], [(2000, 256), (1000, 256)],
-    [(2000, 512), (1000, 512)], [(2000, 1024), (1000, 1024)],
-    [(2000, 2048), (1000, 2048)], [(2000, 4096), (1000, 4096)],
-    [(2000, 16), (1000, 256)], [(2000, 16), (1000, 512)],
-    [(2000, 16), (1000, 1024)], [(2000, 16), (1000, 2048)],
-    [(2000, 16), (1000, 4096)],
+MIXED_WEIGHT_CASES = [
+    (SparseType.FP32, SparseType.FP16),
+    (SparseType.FP8, SparseType.INT8),
+    (SparseType.FP32, SparseType.FP16, SparseType.FP8, SparseType.INT8),
+    (SparseType.FP16, SparseType.FP8, SparseType.INT8, SparseType.INT4),
+    (SparseType.FP32, SparseType.FP16, SparseType.FP8, SparseType.INT8, SparseType.INT4, SparseType.INT2),
+    (SparseType.FP16, SparseType.FP32, SparseType.FP8, SparseType.INT8, SparseType.INT4, SparseType.FP16),
+    (
+        SparseType.FP32,
+        SparseType.FP16,
+        SparseType.FP8,
+        SparseType.INT8,
+        SparseType.INT4,
+        SparseType.FP16,
+        SparseType.FP32,
+        SparseType.INT8,
+    ),
+    (
+        SparseType.FP16,
+        SparseType.FP8,
+        SparseType.INT8,
+        SparseType.INT4,
+        SparseType.FP32,
+        SparseType.FP16,
+        SparseType.INT8,
+        SparseType.INT2,
+    ),
 ]
 
-# Nobag模式的表配置（所有表的D维度相同）
-NOBAG_TABLES = [
-    [(1000, 16), (2000, 16)], [(1000, 32), (2000, 32)], [(1000, 64), (2000, 64)],
-    [(1000, 128), (2000, 128)], [(2000, 256), (1000, 256)], [(2000, 512), (1000, 512)],
-    [(2000, 1024), (1000, 1024)], [(2000, 2048), (1000, 2048)],
-    [(2000, 4096), (1000, 4096)],
-]
 
-
-@pytest.mark.parametrize("pooling_mode", [PoolingMode.SUM, PoolingMode.MEAN])
-@pytest.mark.parametrize("weighted", [True, False])
-@pytest.mark.parametrize("indices_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("output_dtype", [SparseType.FP16, SparseType.FP32, SparseType.BF16])
-@pytest.mark.parametrize("tables", BAG_TABLES)
-def test_double_table_forward_bag(
-        pooling_mode: PoolingMode,
-        weighted: bool,
-        indices_dtype: torch.dtype,
-        output_dtype: SparseType,
-        tables: List[Tuple[int, int]],
+@pytest.mark.parametrize("forward_case", POOLING_CASES)
+@pytest.mark.parametrize("output_dtype", [SparseType.FP16, SparseType.FP32, SparseType.BF16, SparseType.INT8])
+@pytest.mark.parametrize("mixed_weight_case", MIXED_WEIGHT_CASES)
+def test_random_multi_table_forward_mixed_weights(
+    forward_case: Tuple[PoolingMode, bool, torch.dtype],
+    output_dtype: SparseType,
+    mixed_weight_case: Tuple[SparseType, ...],
 ) -> None:
-    """双表测试用例（Bag模式），使用预定义的表配置"""
-    weights_ty = SparseType.FP8
+    """
+    Mixed weights bench only covers pooled modes to match community coverage.
+    """
+    pooling_mode, weighted, indices_dtype = forward_case
+
+    if output_dtype == SparseType.FP32 and SparseType.INT2 in mixed_weight_case:
+        pytest.skip("Mixed INT2 + FP32 output matches GPU/community skip")
+
     config = TestConfig(
         pooling_mode=pooling_mode,
         weighted=weighted,
-        weights_ty=weights_ty,
+        weights_ty=SparseType.INT8,
+        weights_ty_list=list(mixed_weight_case),
         indices_dtype=indices_dtype,
         output_dtype=output_dtype,
         B=64,
-        tables=tables,
-        L_list=[40, 50],
-    )
-    _run_multi_table_test(config)
-
-
-@pytest.mark.parametrize("pooling_mode", [PoolingMode.NONE])
-@pytest.mark.parametrize("weighted", [False])
-@pytest.mark.parametrize("indices_dtype", [torch.int32])
-@pytest.mark.parametrize("output_dtype", [SparseType.FP16, SparseType.FP32, SparseType.BF16])
-@pytest.mark.parametrize("tables", NOBAG_TABLES)
-def test_double_table_forward_nobag(
-        pooling_mode: PoolingMode,
-        weighted: bool,
-        indices_dtype: torch.dtype,
-        output_dtype: SparseType,
-        tables: List[Tuple[int, int]],
-) -> None:
-    """双表测试用例（Nobag模式），使用预定义的表配置"""
-    weights_ty = SparseType.FP8
-    config = TestConfig(
-        pooling_mode=pooling_mode,
-        weighted=weighted,
-        weights_ty=weights_ty,
-        indices_dtype=indices_dtype,
-        output_dtype=output_dtype,
-        B=64,
-        tables=tables,
-        L_list=[40, 50],
+        table_num=len(mixed_weight_case),
+        L=100,
     )
     _run_multi_table_test(config)
