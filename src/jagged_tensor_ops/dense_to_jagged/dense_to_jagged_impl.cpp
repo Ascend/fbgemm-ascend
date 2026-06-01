@@ -31,11 +31,11 @@ at::Tensor dense_to_jagged_impl(const at::Tensor& dense, const at::Tensor& offse
     // 2D [B, max_len]：1D jagged backward，内部当作 [B, max_len, 1] 处理，输出再 squeeze 为 [total_L]
     // 3D [B, max_len, D]：2D jagged backward，输出 [total_L, D]
     at::Tensor dense_contin = dense.contiguous();
-    auto D = dense_contin.size(-1);
     bool output_1d = (dense.dim() == EXPECTED_DIM_2D);
     if (output_1d) {
         dense_contin = dense_contin.unsqueeze(-1);
     }
+    auto D = dense_contin.size(-1);
 
     int64_t totalLComputed;
     if (total_L.has_value()) {
