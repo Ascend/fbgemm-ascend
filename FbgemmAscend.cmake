@@ -10,19 +10,21 @@ set(ASCENDC_A5_ONLY_OPS
     invert_permute
     init_address_lookup
     pruned_array_lookup_from_row_idx
+    emb_inplace_update
     run_length_encode
     pruned_hashmap_lookup
     pruned_array_lookup
+    lru_cache_find_uncached
+    lru_cache_insert_byte
     group_index_select_dim0
     group_index_select_dim0_backward
     linearize_cache_indices_from_row_idx
-    lru_cache_find_uncached
-    lru_cache_insert_byte
     direct_mapped_lxu_cache_lookup
     direct_mapped_lru_cache_find_uncached
     direct_mapped_lru_cache_insert_byte
-    emb_inplace_update
 )
+list(APPEND ASCENDC_A5_ONLY_OPS ${FBGEMM_ASCEND_TBE_INFERENCE_A5_ONLY_OPS})
+
 
 set(ASCENDC_A3_OPS
     asynchronous_complete_cumsum
@@ -87,6 +89,7 @@ function(_fbgemm_add_ascendc_op vendor_name source_dir build_ver ai_core stage_d
         OUTPUT ${stamp}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E env
+            FBGEMM_ASCEND_SOURCE_DIR=${FBGEMM_ASCEND_SOURCE_DIR}
             FBGEMM_ASCEND_INSTALL_PATH=${stage_dir}
             bash ./run.sh ${ai_core}
         COMMAND ${CMAKE_COMMAND} -E touch ${stamp}
@@ -96,6 +99,10 @@ function(_fbgemm_add_ascendc_op vendor_name source_dir build_ver ai_core stage_d
         VERBATIM)
 
     add_custom_target(${target_name} ALL DEPENDS ${stamp})
+    if(vendor_name STREQUAL "int_nbit_split_embedding_codegen_lookup_function"
+            AND TARGET fbgemm_ascend_tbe_inference_codegen)
+        add_dependencies(${target_name} fbgemm_ascend_tbe_inference_codegen)
+    endif()
     get_property(_prev_target GLOBAL PROPERTY "FBGEMM_PREV_${vendor_name}" SET)
     if(_prev_target)
         get_property(_prev_name GLOBAL PROPERTY "FBGEMM_PREV_${vendor_name}")
@@ -106,6 +113,7 @@ function(_fbgemm_add_ascendc_op vendor_name source_dir build_ver ai_core stage_d
 endfunction()
 
 set(_ASCENDC_OPS
+    ${FBGEMM_ASCEND_TBE_INFERENCE_ASCENDC_OPS}
     "float_or_half_to_fused_nbit_rowwise|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_or_half_to_fused_nbit_rowwise"
     "pruned_array_lookup_from_row_idx|${FBGEMM_ASCEND_SOURCE_DIR}/src/embedding_inplace_ops/pruned_array_lookup_from_row_idx"
     "emb_inplace_update|${FBGEMM_ASCEND_SOURCE_DIR}/src/embedding_inplace_ops/emb_inplace_update"
@@ -132,10 +140,10 @@ set(_ASCENDC_OPS
     "split_embedding_codegen_forward_unweighted|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/split_embedding_codegen_forward_unweighted"
     "bounds_check_indices|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/bounds_check_indices"
     "run_length_encode|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/get_unique_indices"
-    "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
-    "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
     "lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_find_uncached"
     "lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lru_cache_insert_byte"
+    "group_index_select_dim0|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0"
+    "group_index_select_dim0_backward|${FBGEMM_ASCEND_SOURCE_DIR}/src/sparse_ops/group_index_select_dim0_backward"
     "direct_mapped_lxu_cache_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lxu_cache_lookup"
     "direct_mapped_lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached"
     "direct_mapped_lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte"
@@ -186,31 +194,19 @@ get_property(ASCENDC_TARGETS GLOBAL PROPERTY FBGEMM_ASCEND_TARGETS)
 # ---------------------------------------------------------------------------
 # C++ 适配层源文件（新增算子在此追加）
 # ---------------------------------------------------------------------------
-set(FBGEMM_ASCEND_ADAPTER_SRCS
-    src/quantize_ops/float_or_half_to_fused_nbit_rowwise/float_or_half_to_fused_nbit_rowwise.cpp
-    src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/pruned_array_lookup_from_row_idx.cpp
-    src/embedding_inplace_ops/emb_inplace_update/emb_inplace_update.cpp
+set(FBGEMM_ASCEND_COMMON_ADAPTER_SRCS
     src/sparse_ops/asynchronous_complete_cumsum/asynchronous_complete_cumsum.cpp
-    src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
-    src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
-    src/sparse_ops/invert_permute/invert_permute.cpp
-    src/split_embeddings_cache/linearize_cache_indices/linearize_cache_indices.cpp
-    src/split_embeddings_cache/linearize_cache_indices_from_row_idx/linearize_cache_indices_from_row_idx.cpp
     src/sparse_ops/offsets_range/offsets_range.cpp
     src/sparse_ops/permute2d_sparse_data/permute1d_sparse_data.cpp
     src/sparse_ops/permute2d_sparse_data/permute2d_sparse_data.cpp
     src/sparse_ops/segment_sum_csr/segment_sum_csr.cpp
-    src/intraining_embedding_pruning_ops/init_address_lookup/init_address_lookup.cpp
     src/jagged_tensor_ops/dense_to_jagged/dense_to_jagged.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_impl.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v1.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v2.cpp
-    src/jagged_tensor_ops/select_dim1_to_permute/keyed_jagged_index_select_dim1.cpp
     src/merge_pooled_embedding_ops/merge_pooled_embedding_ops_npu.cpp
     src/topology_utils.cpp
     src/pooled_embedding_ops/permute_pooled_embs/permute_pooled_embs.cpp
-    src/tbe_inference/pruned_hashmap_lookup/pruned_hashmap_lookup.cpp
-    src/tbe_inference/pruned_array_lookup/pruned_array_lookup.cpp
     src/tbe_training/dense_embedding_codegen_lookup_function/dense_embedding_codegen_lookup_function.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/split_embedding_codegen_forward_unweighted.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_adagrad_unweighted_exact.cpp
@@ -220,10 +216,26 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_rowwise_adagrad_unweighted_exact.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact.cpp
     src/tbe_training/split_embedding_codegen_forward_unweighted/backward_codegen_sgd_unweighted_exact_grad_aggregation.cpp
-    src/tbe_training/bounds_check_indices/bounds_check_indices.cpp
-    src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
+)
+
+set(FBGEMM_ASCEND_A5_ONLY_ADAPTER_SRCS
+    ${FBGEMM_ASCEND_TBE_INFERENCE_ADAPTER_SRCS_A5_ONLY}
+    src/embedding_inplace_ops/pruned_array_lookup_from_row_idx/pruned_array_lookup_from_row_idx.cpp
+    src/embedding_inplace_ops/emb_inplace_update/emb_inplace_update.cpp
+    src/intraining_embedding_pruning_ops/init_address_lookup/init_address_lookup.cpp
+    src/jagged_tensor_ops/select_dim1_to_permute/keyed_jagged_index_select_dim1.cpp
+    src/quantize_ops/float_or_half_to_fused_nbit_rowwise/float_or_half_to_fused_nbit_rowwise.cpp
+    src/sparse_ops/block_bucketize_sparse_features/block_bucketize_sparse_features.cpp
+    src/sparse_ops/expand_into_jagged_permute/expand_into_jagged_permute.cpp
+    src/sparse_ops/invert_permute/invert_permute.cpp
     src/sparse_ops/group_index_select_dim0/group_index_select_dim0.cpp
+    src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
-    src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/direct_mapped_lru_cache_populate_byte.cpp
     src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/direct_mapped_lxu_cache_lookup.cpp
+    src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/direct_mapped_lru_cache_populate_byte.cpp
+    src/split_embeddings_cache/linearize_cache_indices/linearize_cache_indices.cpp
+    src/split_embeddings_cache/linearize_cache_indices_from_row_idx/linearize_cache_indices_from_row_idx.cpp
+    src/tbe_inference/pruned_hashmap_lookup/pruned_hashmap_lookup.cpp
+    src/tbe_inference/pruned_array_lookup/pruned_array_lookup.cpp
+    src/tbe_training/bounds_check_indices/bounds_check_indices.cpp
 )

@@ -86,7 +86,7 @@ parse_arguments() {
         echo "ERROR: --vendor-name is required." >&2
         return 1
     fi
-    
+
     export vendor_name
     export ai_core
     return 0
@@ -160,7 +160,7 @@ get_gpp_path() {
 
 check_system_and_cann() {
     local target_core="$1"
-    
+
     # 获取架构
     ARCH=$(uname -m)
     if [ -z "${ARCH}" ]; then
@@ -213,7 +213,7 @@ overwrite_source_with_target() {
     find "$src_dir" -type f | while read -r src_file; do
         local relative_path="${src_file#$src_dir/}"
         local target_file="$tgt_dir/$relative_path"
-        
+
         if [ -f "$target_file" ]; then
             cp -f "$target_file" "$src_file"
             echo "Overwrite $src_file with $target_file"
@@ -318,20 +318,20 @@ build_onnx_adapter() {
     if [ "$a_core" = "ai_core-Ascend310P3" ]; then
         echo "Building ONNX adapter for ${a_core}..."
         local build_script="${o_path}/build_onnx.sh"
-        
+
         if [ ! -f "$build_script" ]; then
             echo "ERROR: build_onnx.sh not found in ${o_path}" >&2
             return 1
         fi
-        
+
         # 执行 build_onnx.sh
         bash "$build_script"
-        
+
         local dest_dir="${work_dir}/${v_name}/framework/onnx_plugin"
         mkdir -p "$dest_dir"
-        
+
         cp -rf "${j_file}" "$dest_dir"
-        
+
         local src_onnx_dir="$(dirname "$work_dir")/onnx_plugin"
         if [ -d "$src_onnx_dir" ]; then
             cp -rf "${src_onnx_dir}"/* "$dest_dir"
@@ -359,9 +359,9 @@ configure_cmake_presets() {
     else
         local enable_catlass="$5"
     fi
-    
+
     local cmake_file="${target_dir}/CMakePresets.json"
-    
+
     if [ ! -f "$cmake_file" ]; then
         echo "ERROR: CMakePresets.json file not exist in ${target_dir}." >&2
         return 1
@@ -370,7 +370,7 @@ configure_cmake_presets() {
     # 修改 CANN 路径
     if [ "$build_ver" = "legacy" ]; then
         sed -i "s:\"/usr/local/Ascend/latest\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
-    else 
+    else
         sed -i "s:\"/usr/local/Ascend/cann\":\"${ASCEND_TOOLKIT_HOME}\":g" "$cmake_file"
     fi
 
@@ -382,10 +382,10 @@ configure_cmake_presets() {
     chip_name_raw=$(echo "$a_core" | sed 's/^ai_core-//i')
     local chip_name
     chip_name=$(echo "$chip_name_raw" | tr '[:upper:]' '[:lower:]')
-    
+
     # 使用全局推导的 CONFIG_DIR
     local config_file="${CONFIG_DIR}/transform.json"
-    
+
     if [ ! -f "$config_file" ]; then
         echo "ERROR: Config file transform.json not found at $config_file" >&2
         return 1
@@ -394,7 +394,7 @@ configure_cmake_presets() {
     local mapped_value
     mapped_value=$(python3 -c "import json; cfg=json.load(open('${config_file}')); \
                    print(cfg['SOC_VERSION_TYPE'].get('${chip_name}', ''))" 2>/dev/null)
-    
+
     if [ -z "$mapped_value" ]; then
         echo "WARNING: No mapping found for chip '$chip_name' in $config_file." >&2
         return 1
@@ -536,7 +536,19 @@ prepare_and_build() {
         # 修改 op_host/CMakeLists.txt
         local host_cmakelists="${target_dir}/op_host/CMakeLists.txt"
         if [ -f "$host_cmakelists" ]; then
-            sed -i "1 i include(../../../../../cmake/func.cmake)" "$host_cmakelists"
+            local host_cmakelists_tmp
+            host_cmakelists_tmp=$(mktemp "${TMPDIR:-/tmp}/op_builder_utils.XXXXXX")
+            {
+                cat <<'EOF'
+            if(DEFINED ENV{FBGEMM_ASCEND_SOURCE_DIR} AND EXISTS "$ENV{FBGEMM_ASCEND_SOURCE_DIR}/src/cmake/func.cmake")
+                include("$ENV{FBGEMM_ASCEND_SOURCE_DIR}/src/cmake/func.cmake")
+            else()
+                include(../../../../../cmake/func.cmake)
+            endif()
+EOF
+                cat "$host_cmakelists"
+            } > "$host_cmakelists_tmp"
+            mv "$host_cmakelists_tmp" "$host_cmakelists"
 
             local line1
             line1=$(awk '/target_compile_definitions(cust_optiling PRIVATE OP_TILING_LIB)/{print NR}' "$host_cmakelists")
@@ -560,7 +572,7 @@ prepare_and_build() {
             done
         fi
     fi
-    
+
     # 执行编译 (需要在 target_dir 下运行 build.sh)
     # 由于 build.sh 内部可能有相对路径依赖，这里必须 cd 进去执行，但用子 shell 包裹，不影响主环境
     local build_script="${target_dir}/build.sh"
@@ -573,7 +585,7 @@ prepare_and_build() {
         echo "ERROR: build.sh not found in ${target_dir}" >&2
         return 1
     fi
-    
+
     return 0
 }
 
@@ -585,14 +597,14 @@ install_operator_package() {
     local o_id="$1"
     local a_arch="$2"
     local target_dir="$3"
-    
+
     local installer="${target_dir}/build_out/custom_opp_${o_id}_${a_arch}.run"
-    
+
     if [ ! -f "$installer" ]; then
         echo "ERROR: Installer package not found: $installer" >&2
         return 1
     fi
-    
+
     echo "Installing operator package: $installer"
     if [ -n "${FBGEMM_ASCEND_INSTALL_PATH}" ]; then
         # CMake 并行构建时，同一 variant 下多个算子共享同一 stage 目录；并发执行多个

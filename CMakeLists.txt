@@ -82,6 +82,12 @@ endif()
 message(STATUS "TORCH_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI} (must match torch lib for torch::Library symbol)")
 
 # -----------------------------------------------------------------------------
+# TBE inference code generation
+# -----------------------------------------------------------------------------
+include(${FBGEMM_ASCEND_SOURCE_DIR}/cmake/TbeInference.cmake)
+fbgemm_ascend_run_tbe_inference_codegen()
+
+# -----------------------------------------------------------------------------
 # AscendC 算子编译与打包（逻辑在 FbgemmAscend.cmake，新增算子只需改 FbgemmAscend.cmake 文件）
 # -----------------------------------------------------------------------------
 include(${FBGEMM_ASCEND_SOURCE_DIR}/FbgemmAscend.cmake)
@@ -91,7 +97,7 @@ include(${FBGEMM_ASCEND_SOURCE_DIR}/FbgemmAscend.cmake)
 # -----------------------------------------------------------------------------
 
 function(fbgemm_add_host_library target_name output_name npu_chip_flag)
-    add_library(${target_name} SHARED ${FBGEMM_ASCEND_ADAPTER_SRCS})
+    add_library(${target_name} SHARED ${ARGN})
     target_compile_features(${target_name} PRIVATE cxx_std_17)
     target_compile_options(${target_name} PRIVATE
         -D_GLIBCXX_USE_CXX11_ABI=${_GLIBCXX_USE_CXX11_ABI}
@@ -153,10 +159,21 @@ if(NOT BUILD_HOST_A5 AND NOT BUILD_HOST_A2A3)
 endif()
 
 if(BUILD_HOST_A5)
-    fbgemm_add_host_library(fbgemm_ascend_py_a5 fbgemm_ascend_py_a5 1)
+    fbgemm_add_host_library(
+        fbgemm_ascend_py_a5
+        fbgemm_ascend_py_a5
+        1
+        ${FBGEMM_ASCEND_COMMON_ADAPTER_SRCS}
+        ${FBGEMM_ASCEND_A5_ONLY_ADAPTER_SRCS}
+    )
 endif()
 if(BUILD_HOST_A2A3)
-    fbgemm_add_host_library(fbgemm_ascend_py_a2a3 fbgemm_ascend_py_a2a3 0)
+    fbgemm_add_host_library(
+        fbgemm_ascend_py_a2a3
+        fbgemm_ascend_py_a2a3
+        0
+        ${FBGEMM_ASCEND_COMMON_ADAPTER_SRCS}
+    )
 endif()
 
 foreach(_t ${ASCENDC_TARGETS})

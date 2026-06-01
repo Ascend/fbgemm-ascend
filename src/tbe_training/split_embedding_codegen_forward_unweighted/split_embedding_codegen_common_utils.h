@@ -21,85 +21,70 @@ const int ADAM_OPTIM_NUM = 2;
 const int ROWWISE_ADAGRAD_OPTIM_NUM = 1;
 
 namespace fbgemm_npu_lookups {
-    inline at::Tensor compute_offset_per_key(
-        const at::Tensor& offsets,
-        const at::Tensor& weights_offsets,
-        const at::Tensor& D_offsets)
-    {
-        // 计算每张表的indices个数
-        int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
-        at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
-        return offsets.index_select(0, table_offsets.to(at::kLong));
-    }
+inline at::Tensor compute_offset_per_key(const at::Tensor& offsets, const at::Tensor& weights_offsets,
+                                         const at::Tensor& D_offsets)
+{
+    // 计算每张表的indices个数
+    int64_t batchs = (offsets.numel() - 1) / weights_offsets.numel();
+    at::Tensor table_offsets = torch::arange(D_offsets.size(0), offsets.device()) * batchs;
+    return offsets.index_select(0, table_offsets.to(at::kLong));
+}
 
-    inline void validate_forward_data_inputs(
-        const at::Tensor& dev_weights,
-        const at::Tensor& weights_offsets,
-        const at::Tensor& D_offsets,
-        const at::Tensor& indices,
-        const at::Tensor& offsets,
-        const at::Tensor& hash_indices,
-        const at::Tensor& offset_per_key,
-        const at::Tensor& rows_per_table)
-    {
-        check_tensor_non_empty(dev_weights, "dev_weights");
-        check_tensor_non_empty(weights_offsets, "weights_offsets");
-        check_tensor_non_empty(D_offsets, "D_offsets");
-        check_tensor_non_empty(indices, "indices");
-        check_tensor_non_empty(offsets, "offsets");
-        if (offset_per_key.defined() && offset_per_key.numel() > 0) {
-            check_tensor_non_empty(offset_per_key, "offset_per_key");
-        }
-        if (rows_per_table.defined() && rows_per_table.numel() > 0) {
-            check_tensor_non_empty(rows_per_table, "rows_per_table");
-        }
-        if (hash_indices.defined() && hash_indices.numel() > 0) {
-            check_tensor_non_empty(hash_indices, "hash_indices");
-        }
+inline void validate_forward_data_inputs(const at::Tensor& dev_weights, const at::Tensor& weights_offsets,
+                                         const at::Tensor& D_offsets, const at::Tensor& indices,
+                                         const at::Tensor& offsets, const at::Tensor& hash_indices,
+                                         const at::Tensor& offset_per_key, const at::Tensor& rows_per_table)
+{
+    check_tensor_non_empty(dev_weights, "dev_weights");
+    check_tensor_non_empty(weights_offsets, "weights_offsets");
+    check_tensor_non_empty(D_offsets, "D_offsets");
+    check_tensor_non_empty(offsets, "offsets");
+    TORCH_CHECK(indices.defined(), "indices tensor must be defined");
+    TORCH_CHECK(indices.dim() > 0, "indices tensor must have non-zero dimensions");
+    if (offset_per_key.defined() && offset_per_key.numel() > 0) {
+        check_tensor_non_empty(offset_per_key, "offset_per_key");
     }
+    if (rows_per_table.defined() && rows_per_table.numel() > 0) {
+        check_tensor_non_empty(rows_per_table, "rows_per_table");
+    }
+    if (hash_indices.defined() && hash_indices.numel() > 0) {
+        check_tensor_non_empty(hash_indices, "hash_indices");
+    }
+}
 
-    inline void validate_backward_data_inputs(
-        const at::Tensor& grad_output,
-        const at::Tensor& dev_weights,
-        const at::Tensor& weights_offsets,
-        const at::Tensor& D_offsets,
-        const at::Tensor& hash_size_cumsum,
-        const at::Tensor& indices,
-        const at::Tensor& offsets,
-        const at::Tensor& momentum1_dev,
-        const at::Tensor& momentum2_dev,
-        const at::Tensor& hash_indices,
-        const at::Tensor& unique_ids,
-        const at::Tensor& unique_offsets,
-        const at::Tensor& unique_inverse,
-        const at::Tensor& offset_per_key,
-        int optim_num = 0)
-    {
-        check_tensor_non_empty(grad_output, "grad_output");
-        check_tensor_non_empty(dev_weights, "dev_weights");
-        check_tensor_non_empty(weights_offsets, "weights_offsets");
-        check_tensor_non_empty(D_offsets, "D_offsets");
-        check_tensor_non_empty(indices, "indices");
-        check_tensor_non_empty(offsets, "offsets");
-        if (offset_per_key.defined()) {
-            check_tensor_non_empty(offset_per_key, "offset_per_key");
-        }
-        if (hash_indices.defined()) {
-            check_tensor_non_empty(hash_indices, "hash_indices");
-        }
-        if (unique_ids.defined()) {
-            check_tensor_non_empty(unique_ids, "unique_ids");
-            check_tensor_non_empty(unique_offsets, "unique_offsets");
-            check_tensor_non_empty(unique_inverse, "unique_inverse");
-        }
-        if (optim_num >= ADAGRAD_OPTIM_NUM) {
-            check_tensor_non_empty(momentum1_dev, "momentum1_dev");
-        }
-        if (optim_num >= ADAM_OPTIM_NUM) {
-            check_tensor_non_empty(momentum2_dev, "momentum2_dev");
-        }
+inline void validate_backward_data_inputs(const at::Tensor& grad_output, const at::Tensor& dev_weights,
+                                          const at::Tensor& weights_offsets, const at::Tensor& D_offsets,
+                                          const at::Tensor& hash_size_cumsum, const at::Tensor& indices,
+                                          const at::Tensor& offsets, const at::Tensor& momentum1_dev,
+                                          const at::Tensor& momentum2_dev, const at::Tensor& hash_indices,
+                                          const at::Tensor& unique_ids, const at::Tensor& unique_offsets,
+                                          const at::Tensor& unique_inverse, const at::Tensor& offset_per_key,
+                                          int optim_num = 0)
+{
+    check_tensor_non_empty(grad_output, "grad_output");
+    check_tensor_non_empty(dev_weights, "dev_weights");
+    check_tensor_non_empty(weights_offsets, "weights_offsets");
+    check_tensor_non_empty(D_offsets, "D_offsets");
+    check_tensor_non_empty(indices, "indices");
+    check_tensor_non_empty(offsets, "offsets");
+    if (offset_per_key.defined()) {
+        check_tensor_non_empty(offset_per_key, "offset_per_key");
     }
-    
-}; // namespace fbgemm_npu_lookups
-#endif // MXREC_ADD_ONS_SPLIT_EMBEDDING_CODEGEN_COMMON_UTILS_H
- 
+    if (hash_indices.defined()) {
+        check_tensor_non_empty(hash_indices, "hash_indices");
+    }
+    if (unique_ids.defined()) {
+        check_tensor_non_empty(unique_ids, "unique_ids");
+        check_tensor_non_empty(unique_offsets, "unique_offsets");
+        check_tensor_non_empty(unique_inverse, "unique_inverse");
+    }
+    if (optim_num >= ADAGRAD_OPTIM_NUM) {
+        check_tensor_non_empty(momentum1_dev, "momentum1_dev");
+    }
+    if (optim_num >= ADAM_OPTIM_NUM) {
+        check_tensor_non_empty(momentum2_dev, "momentum2_dev");
+    }
+}
+
+};  // namespace fbgemm_npu_lookups
+#endif  // MXREC_ADD_ONS_SPLIT_EMBEDDING_CODEGEN_COMMON_UTILS_H
