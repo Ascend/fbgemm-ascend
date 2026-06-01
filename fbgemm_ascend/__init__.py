@@ -47,9 +47,7 @@ def env_setup_path() -> str:
     for c in candidates:
         if os.path.isfile(c) and _package_has_opp(os.path.dirname(c)):
             return c
-    raise FileNotFoundError(
-        f"fbgemm_ascend: env_setup.sh with packaged opp/*/vendors not found (tried: {candidates})"
-    )
+    raise FileNotFoundError(f"fbgemm_ascend: env_setup.sh with packaged opp/*/vendors not found (tried: {candidates})")
 
 
 def _detect_soc_from_npu_smi():
@@ -186,6 +184,76 @@ def _candidate_lib_names(variant: str) -> list[str]:
     return names
 
 
+def _infer_max_lengths_from_dense(dense: torch.Tensor, offset_count: int, values_dim: int) -> list[int]:
+    output_without_inner = values_dim == 1
+    start = 1
+    end = dense.dim() if output_without_inner else dense.dim() - 1
+    max_lengths = list(dense.shape[start:end])
+    if len(max_lengths) != offset_count:
+        raise RuntimeError(
+            f"dense dim mismatch for {offset_count} offsets and values dim {values_dim}: got dense shape {tuple(dense.shape)}"
+        )
+    return max_lengths
+
+
+def _jagged_dense_elementwise_add_jagged_output_setup_context(ctx, inputs, output) -> None:
+    x_values, x_offsets, y = inputs
+    ctx.save_for_backward(x_values, y, *x_offsets)
+    ctx.offset_count = len(x_offsets)
+
+
+def _jagged_dense_elementwise_add_jagged_output_backward(ctx, grad_output, grad_offsets=None):
+    saved = ctx.saved_tensors
+    x_values = saved[0]
+    y = saved[1]
+    x_offsets = list(saved[2 : 2 + ctx.offset_count])
+    grad_x = grad_output.contiguous()
+    if grad_output.numel() == 0 or x_values.numel() == 0:
+        grad_y = torch.zeros_like(y)
+    else:
+        max_lengths = _infer_max_lengths_from_dense(y, len(x_offsets), x_values.dim())
+        grad_y = torch.ops.fbgemm.jagged_to_padded_dense(grad_x, x_offsets, max_lengths, 0.0)
+    return grad_x, [None for _ in x_offsets], grad_y
+
+
+def _jagged_dense_elementwise_mul_setup_context(ctx, inputs, output) -> None:
+    x_values, x_offsets, y = inputs
+    ctx.save_for_backward(x_values, y, *x_offsets)
+    ctx.offset_count = len(x_offsets)
+
+
+def _jagged_dense_elementwise_mul_backward(ctx, grad_output, grad_offsets=None):
+    saved = ctx.saved_tensors
+    x_values = saved[0]
+    y = saved[1]
+    x_offsets = list(saved[2 : 2 + ctx.offset_count])
+    if grad_output.numel() == 0 or x_values.numel() == 0:
+        return torch.zeros_like(x_values), [None for _ in x_offsets], torch.zeros_like(y)
+    grad_x, grad_y = torch.ops.fbgemm.jagged_dense_elementwise_mul_backward(
+        grad_output.contiguous(),
+        x_offsets,
+        y,
+        x_values,
+    )
+    return grad_x, [None for _ in x_offsets], grad_y
+
+
+def _register_python_autograd() -> None:
+    try:
+        torch.library.register_autograd(
+            "fbgemm::jagged_dense_elementwise_add_jagged_output",
+            _jagged_dense_elementwise_add_jagged_output_backward,
+            setup_context=_jagged_dense_elementwise_add_jagged_output_setup_context,
+        )
+        torch.library.register_autograd(
+            "fbgemm::jagged_dense_elementwise_mul",
+            _jagged_dense_elementwise_mul_backward,
+            setup_context=_jagged_dense_elementwise_mul_setup_context,
+        )
+    except RuntimeError as e:
+        logging.warning("fbgemm_ascend: Python autograd registration skipped: %s", e)
+
+
 def _load_library(no_throw: bool = False) -> None:
     pkg_dir = os.path.realpath(os.path.dirname(__file__))
     # 可编辑安装时 .so 可能在：包目录、_skbuild/.../cmake-install/fbgemm_ascend/ 或 .../cmake-install/fbgemm_ascend/fbgemm_ascend/
@@ -212,16 +280,14 @@ def _load_library(no_throw: bool = False) -> None:
             if os.path.isfile(lib_path):
                 try:
                     torch.ops.load_library(lib_path)
+                    _register_python_autograd()
                     logging.info("fbgemm_ascend: loaded '%s'", lib_path)
                     return
                 except Exception as e:
                     logging.error("fbgemm_ascend: could not load '%s': %s", lib_path, e)
                     if not no_throw:
                         raise
-    msg = (
-        "fbgemm_ascend: library not found (variant=%s, dirs=%s, candidates=%s)"
-        % (variant, search_dirs, lib_names)
-    )
+    msg = "fbgemm_ascend: library not found (variant=%s, dirs=%s, candidates=%s)" % (variant, search_dirs, lib_names)
     if no_throw:
         logging.warning(msg)
         return

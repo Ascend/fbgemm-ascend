@@ -122,7 +122,7 @@ class ElementwiseBinaryTest(unittest.TestCase):
         num_jagged_dim=st.integers(1, 4),
         outer_dense_size=st.integers(0, 4),
         inner_dense_size=st.integers(0, 4),
-        operation=st.sampled_from(["add"]),
+        operation=st.sampled_from(["add", "add_jagged_output", "mul"]),
         dtype=st.sampled_from([torch.float, torch.half, torch.bfloat16]),
         device=st.just("npu"),
     )
@@ -146,10 +146,37 @@ class ElementwiseBinaryTest(unittest.TestCase):
         )
 
     @given(
+        num_jagged_dim=st.just(1),
+        outer_dense_size=st.integers(0, 8),
+        inner_dense_size=st.sampled_from([16, 64, 96, 192]),
+        operation=st.sampled_from(["add_jagged_output", "mul"]),
+        dtype=st.just(torch.half),
+        device=st.just("npu"),
+    )
+    @settings(verbosity=Verbosity.verbose, max_examples=4, deadline=None)
+    def test_jagged_elementwise_binary_opt(
+        self,
+        num_jagged_dim: int,
+        outer_dense_size: int,
+        inner_dense_size: int,
+        operation: str,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
+        self._test_jagged_elementwise_binary(
+            num_jagged_dim,
+            outer_dense_size,
+            inner_dense_size,
+            operation,
+            dtype,
+            device,
+        )
+
+    @given(
         num_jagged_dim=st.integers(1, 5),
         outer_dense_size=st.integers(2, 5),
         inner_dense_size=st.integers(2, 5),
-        operation=st.sampled_from(["add"]),
+        operation=st.sampled_from(["add", "add_jagged_output", "mul"]),
         dtype=st.sampled_from([torch.float, torch.half, torch.bfloat16]),
         device=st.just("npu"),
     )

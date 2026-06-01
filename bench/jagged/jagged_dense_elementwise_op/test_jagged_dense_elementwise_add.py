@@ -38,11 +38,10 @@ if NPU_ENABLE:
 else:
     DEVICE = "cuda:0"
 
-VALUES_DATA_TYPES = [torch.float32, torch.float16, torch.bfloat16, torch.int32, torch.int64]
 FLOAT_VALUES_DATA_TYPES = [torch.float32, torch.float16, torch.bfloat16]
+MUL_OP_VALUES_DATA_TYPES = [torch.float32, torch.float16]
 OFFSETS_DATA_TYPES = [torch.int32, torch.int64]
 NAMESPACES = ["fbgemm"]
-
 
 FORWARD_CASES = [
     {
@@ -50,7 +49,7 @@ FORWARD_CASES = [
         "num_jagged_dim": 1,
         "batch_size": 1,
         "max_lengths": [1],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "full",
     },
     {
@@ -58,7 +57,7 @@ FORWARD_CASES = [
         "num_jagged_dim": 1,
         "batch_size": 5,
         "max_lengths": [4],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "mixed_zero",
     },
     {
@@ -82,7 +81,7 @@ FORWARD_CASES = [
         "num_jagged_dim": 2,
         "batch_size": 3,
         "max_lengths": [4, 5],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "mixed_zero",
     },
     {
@@ -114,7 +113,7 @@ FORWARD_CASES = [
         "num_jagged_dim": 1,
         "batch_size": 3,
         "max_lengths": [5],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "all_zero",
     },
     {
@@ -130,7 +129,7 @@ FORWARD_CASES = [
         "num_jagged_dim": 1,
         "batch_size": 0,
         "max_lengths": [5],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "all_zero",
     },
     {
@@ -149,7 +148,7 @@ BACKWARD_CASES = [
         "num_jagged_dim": 1,
         "batch_size": 4,
         "max_lengths": [7],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "mixed_zero",
     },
     {
@@ -165,7 +164,7 @@ BACKWARD_CASES = [
         "num_jagged_dim": 2,
         "batch_size": 3,
         "max_lengths": [4, 5],
-        "inner_dense_size": None,
+        "inner_dense_size": 0,
         "length_mode": "staircase",
     },
     {
@@ -254,7 +253,7 @@ def make_offsets(batch_size, max_lengths, offsets_dtype, length_mode):
 
 
 def make_values(total_l, inner_dense_size, dtype):
-    shape = (total_l,) if inner_dense_size is None else (total_l, inner_dense_size)
+    shape = (total_l, inner_dense_size)
     if dtype in [torch.int32, torch.int64]:
         return torch.randint(-100, 100, shape, dtype=dtype)
     return torch.empty(shape, dtype=dtype).uniform_(-1.0, 1.0)
@@ -262,7 +261,7 @@ def make_values(total_l, inner_dense_size, dtype):
 
 def make_dense(batch_size, max_lengths, inner_dense_size, dtype, non_contiguous=False):
     # dense 的形状与算子输出保持一致，用 max_lengths 表示各 jagged 维度的 padded 上界。
-    shape = (batch_size, *max_lengths) if inner_dense_size is None else (batch_size, *max_lengths, inner_dense_size)
+    shape = (batch_size, *max_lengths, inner_dense_size)
     if dtype in [torch.int32, torch.int64]:
         dense = torch.randint(-100, 100, shape, dtype=dtype)
     else:
@@ -368,7 +367,7 @@ def run_backward_case(namespace, case, values_dtype, offsets_dtype):
 @pytest.mark.skipif(not NPU_ENABLE, reason="需要 NPU 设备")
 @pytest.mark.parametrize("namespace", NAMESPACES)
 @pytest.mark.parametrize("case", FORWARD_CASES, ids=lambda c: c["id"])
-@pytest.mark.parametrize("values_dtype", VALUES_DATA_TYPES)
+@pytest.mark.parametrize("values_dtype", FLOAT_VALUES_DATA_TYPES)
 @pytest.mark.parametrize("offsets_dtype", OFFSETS_DATA_TYPES)
 def test_jagged_dense_elementwise_add_forward_full_coverage(namespace, case, values_dtype, offsets_dtype):
     run_forward_case(namespace, case, values_dtype, offsets_dtype)
@@ -399,28 +398,98 @@ def test_jagged_dense_elementwise_add_shape_stress(namespace, case, values_dtype
     run_forward_case(namespace, case, values_dtype, torch.int64)
 
 
+def run_jagged_output_op(op, values, offsets, dense):
+    if values.dim() == 1:
+        out, out_offsets = op(values.unsqueeze(-1), offsets, dense.unsqueeze(-1))
+        return out.squeeze(-1), out_offsets
+    return op(values, offsets, dense)
+
+
+def run_jagged_output_forward_case(namespace, case, values_dtype, offsets_dtype, operation, non_contiguous_dense=False):
+    values, offsets, dense = make_case_tensors(
+        case, values_dtype, offsets_dtype, non_contiguous_dense=non_contiguous_dense
+    )
+    op = getattr(op_namespace(namespace), f"jagged_dense_elementwise_{operation}")
+    ref, ref_offsets = run_jagged_output_op(op, values, offsets, dense)
+    out, out_offsets = op(
+        values.to(DEVICE),
+        [offset.to(DEVICE) for offset in offsets],
+        dense.to(DEVICE),
+    )
+
+    assert out.shape == ref.shape
+    assert len(out_offsets) == len(ref_offsets)
+    for actual_offset, expected_offset in zip(out_offsets, ref_offsets):
+        assert torch.equal(actual_offset.cpu(), expected_offset.cpu())
+    assert_close(out, ref, values_dtype)
+
+
+def run_jagged_output_backward_case(namespace, case, values_dtype, offsets_dtype, operation):
+    values, offsets, dense = make_case_tensors(case, values_dtype, offsets_dtype)
+    op = getattr(op_namespace(namespace), f"jagged_dense_elementwise_{operation}")
+
+    x_ref = values.detach().clone().requires_grad_(True)
+    d_ref = dense.detach().clone().requires_grad_(True)
+    ref, ref_offsets = run_jagged_output_op(op, x_ref, offsets, d_ref)
+    grad_output = torch.empty_like(ref).uniform_(-1.0, 1.0)
+    ref.backward(grad_output)
+
+    x_npu = values.to(DEVICE).detach().clone().requires_grad_(True)
+    d_npu = dense.to(DEVICE).detach().clone().requires_grad_(True)
+    out, out_offsets = op(
+        x_npu,
+        [offset.to(DEVICE) for offset in offsets],
+        d_npu,
+    )
+    out.backward(grad_output.to(DEVICE))
+
+    assert len(out_offsets) == len(ref_offsets)
+    for actual_offset, expected_offset in zip(out_offsets, ref_offsets):
+        assert torch.equal(actual_offset.cpu(), expected_offset.cpu())
+    assert_close(x_npu.grad, x_ref.grad, values_dtype)
+    assert_close(d_npu.grad, d_ref.grad, values_dtype)
+
+
 @pytest.mark.skipif(not NPU_ENABLE, reason="需要 NPU 设备")
 @pytest.mark.parametrize("namespace", NAMESPACES)
-@pytest.mark.parametrize("values_1d", [True, False])
+@pytest.mark.parametrize("case", FORWARD_CASES, ids=lambda c: c["id"])
+@pytest.mark.parametrize("operation", ["add_jagged_output", "mul"])
 @pytest.mark.parametrize("values_dtype", FLOAT_VALUES_DATA_TYPES)
-def test_jagged_dense_elementwise_add_backward_operator(namespace, values_1d, values_dtype):
-    case = {
-        "id": "direct_backward",
-        "num_jagged_dim": 2,
-        "batch_size": 3,
-        "max_lengths": [4, 5],
-        "inner_dense_size": None if values_1d else 6,
-        "length_mode": "mixed_zero",
-    }
-    values, offsets, dense = make_case_tensors(case, values_dtype, torch.int64)
-    grad_output = torch.empty_like(dense).uniform_(-1.0, 1.0)
-    # dense_to_jagged目前还不支持offset为list的场景，后续支持了再替换成torch.ops.fbgemm.dense_to_jagged
-    ref = dense_to_jagged_reference(grad_output, offsets)
-    out = op_namespace(namespace).jagged_dense_elementwise_add_backward(
-        grad_output.to(DEVICE),
-        [offset.to(DEVICE) for offset in offsets],
-        values.shape[0],
-        values_1d,
-    )
-    assert out.shape == values.shape
-    assert_close(out, ref, values_dtype)
+@pytest.mark.parametrize("offsets_dtype", OFFSETS_DATA_TYPES)
+def test_jagged_dense_elementwise_binary_jagged_output_forward_full_coverage(
+    namespace, case, operation, values_dtype, offsets_dtype
+):
+    run_jagged_output_forward_case(namespace, case, values_dtype, offsets_dtype, operation)
+
+
+@pytest.mark.skipif(not NPU_ENABLE, reason="需要 NPU 设备")
+@pytest.mark.parametrize("namespace", NAMESPACES)
+@pytest.mark.parametrize("case", FORWARD_CASES[:8], ids=lambda c: c["id"])
+@pytest.mark.parametrize("operation", ["add_jagged_output", "mul"])
+@pytest.mark.parametrize("values_dtype", FLOAT_VALUES_DATA_TYPES)
+def test_jagged_dense_elementwise_binary_jagged_output_forward_non_contiguous_dense(
+    namespace, case, operation, values_dtype
+):
+    run_jagged_output_forward_case(namespace, case, values_dtype, torch.int64, operation, non_contiguous_dense=True)
+
+
+@pytest.mark.skipif(not NPU_ENABLE, reason="需要 NPU AutogradPrivateUse1 实现")
+@pytest.mark.parametrize("namespace", NAMESPACES)
+@pytest.mark.parametrize("case", BACKWARD_CASES, ids=lambda c: c["id"])
+@pytest.mark.parametrize("operation", ["add_jagged_output"])
+@pytest.mark.parametrize("values_dtype", FLOAT_VALUES_DATA_TYPES)
+@pytest.mark.parametrize("offsets_dtype", OFFSETS_DATA_TYPES)
+def test_jagged_dense_elementwise_add_jagged_output_jagged_output_backward(
+    namespace, case, operation, values_dtype, offsets_dtype
+):
+    run_jagged_output_backward_case(namespace, case, values_dtype, offsets_dtype, operation)
+
+
+@pytest.mark.skipif(not NPU_ENABLE, reason="需要 NPU AutogradPrivateUse1 实现")
+@pytest.mark.parametrize("namespace", NAMESPACES)
+@pytest.mark.parametrize("case", BACKWARD_CASES, ids=lambda c: c["id"])
+@pytest.mark.parametrize("operation", ["mul"])
+@pytest.mark.parametrize("values_dtype", MUL_OP_VALUES_DATA_TYPES)
+@pytest.mark.parametrize("offsets_dtype", OFFSETS_DATA_TYPES)
+def test_jagged_dense_elementwise_mul_jagged_output_backward(namespace, case, operation, values_dtype, offsets_dtype):
+    run_jagged_output_backward_case(namespace, case, values_dtype, offsets_dtype, operation)

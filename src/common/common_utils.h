@@ -30,8 +30,11 @@
 inline void check_tensor_non_empty(const at::Tensor& tensor, const std::string& name)
 {
     TORCH_CHECK(tensor.defined(), name, " tensor must be defined");
-    TORCH_CHECK(tensor.numel() > 0, name, " tensor must be non-empty");
     TORCH_CHECK(tensor.dim() > 0, name, " tensor must have non-zero dimensions");
+    // fack tensor 直接用tensor.numel会有问题，所以用这种方式判断
+    for (int64_t i = 0; i < tensor.dim(); ++i) {
+        TORCH_CHECK(tensor.size(i) > 0, name, " tensor must be non-empty (dim ", i, " is zero)");
+    }
 }
 
 /**
@@ -52,22 +55,21 @@ inline void check_tensor_dim(const at::Tensor& tensor, int64_t expectedDim, cons
  * @param allowed_dims 允许的维度列表
  * @param name 张量名称
  */
-inline void check_tensor_dim(const at::Tensor& tensor,
-                            const std::vector<int64_t>& allowed_dims,
-                            const std::string& name)
+inline void check_tensor_dim(const at::Tensor& tensor, const std::vector<int64_t>& allowed_dims,
+                             const std::string& name)
 {
     auto actual_dim = tensor.dim();
-    bool is_allowed = std::find(allowed_dims.begin(), allowed_dims.end(), actual_dim) 
-                      != allowed_dims.end();
+    bool is_allowed = std::find(allowed_dims.begin(), allowed_dims.end(), actual_dim) != allowed_dims.end();
 
     std::string allowed_str;
     for (size_t i = 0; i < allowed_dims.size(); ++i) {
-        if (i > 0) allowed_str += (i == allowed_dims.size() - 1) ? " or " : ", ";
+        if (i > 0) {
+            allowed_str += (i == allowed_dims.size() - 1) ? " or " : ", ";
+        }
         allowed_str += std::to_string(allowed_dims[i]) + "D";
     }
 
-    TORCH_CHECK(is_allowed, name, " must be ", allowed_str, 
-                ", got ", actual_dim, "D");
+    TORCH_CHECK(is_allowed, name, " must be ", allowed_str, ", got ", actual_dim, "D");
 }
 
 /**
@@ -76,14 +78,13 @@ inline void check_tensor_dim(const at::Tensor& tensor,
  * @param names 张量名称列表(用于错误信息)
  * @throw torch::library::Exception 如果deviceType不是NPU，或deviceId不一致
  */
-inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors,
-                                    const std::vector<std::string>& names)
+inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors, const std::vector<std::string>& names)
 {
     // 检查所有张量是否都在NPU设备上
     for (size_t i = 0; i < tensors.size(); ++i) {
-        TORCH_CHECK(tensors[i].device().type() == at::kPrivateUse1,
-                    names[i], " tensor must be on NPU device, but got device type: ",
-                    static_cast<int>(tensors[i].device().type()));
+        TORCH_CHECK(
+            tensors[i].device().type() == at::kPrivateUse1, names[i],
+            " tensor must be on NPU device, but got device type: ", static_cast<int>(tensors[i].device().type()));
     }
 
     // 如果只有一个张量，不需要检查设备ID一致性
@@ -96,8 +97,7 @@ inline void check_tensor_npu_device(const std::vector<at::Tensor>& tensors,
     // 检查所有张量的设备ID是否一致
     for (size_t i = 1; i < tensors.size(); ++i) {
         int64_t current_device_id = tensors[i].device().index();
-        TORCH_CHECK(current_device_id == expected_device_id,
-                    names[i], " device ID (", current_device_id,
+        TORCH_CHECK(current_device_id == expected_device_id, names[i], " device ID (", current_device_id,
                     ") must match ", names[0], " device ID (", expected_device_id, ")");
     }
 }
@@ -125,12 +125,10 @@ public:
     }
 };
 
-
 inline bool CheckInList(int64_t val, const std::vector<int64_t>& validValues)
 {
     return std::find(validValues.begin(), validValues.end(), val) != validValues.end();
 }
-
 
 /**
  * 检查参数列表长度是否符合预期
@@ -148,4 +146,4 @@ inline bool CheckOptionalTensorIsNotNone(const c10::optional<at::Tensor>& tensor
 {
     return tensor.has_value() && tensor.value().defined();
 }
-#endif // COMMON_UTILS_H
+#endif  // COMMON_UTILS_H

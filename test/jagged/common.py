@@ -21,7 +21,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import sys
 import itertools
+from typing import Callable
 
 import numpy as np
 import torch
@@ -47,6 +49,13 @@ npu_unavailable: tuple[bool, str] = (
 
 def cpu_and_maybe_npu() -> st.SearchStrategy:
     return st.sampled_from([torch.device("cpu")] + ([torch.device("npu")] if npu_available() else []))
+
+
+def torch_compiled(model: Callable, **kwargs) -> Callable:
+    if sys.version_info < (3, 12, 0):
+        return torch.compile(model, **kwargs)
+    else:
+        return model
 
 
 def lengths_to_segment_ids(lengths: torch.Tensor) -> torch.Tensor:
