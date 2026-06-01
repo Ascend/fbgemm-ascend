@@ -8,7 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------------------------------------
 
-set(MY_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../common_ops)
+if(DEFINED ENV{FBGEMM_ASCEND_SOURCE_DIR} AND EXISTS "$ENV{FBGEMM_ASCEND_SOURCE_DIR}/src/common_ops")
+    set(MY_COMMON_DIR "$ENV{FBGEMM_ASCEND_SOURCE_DIR}/src/common_ops")
+else()
+    set(MY_COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../common_ops)
+endif()
 
 aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} ops_srcs)
 npu_op_code_gen(
