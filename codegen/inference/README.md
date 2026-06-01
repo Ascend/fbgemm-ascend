@@ -57,7 +57,7 @@ torch.ops.fbgemm.int_nbit_split_embedding_codegen_lookup_function(
 
 - bag 模式：`SUM` / `MEAN`
 - nobag 模式：`NONE`
-- 多种权重量化类型：`INT2` / `INT4` / `INT8` / `FP16` / `FP32` / `BF16` / `FP8`
+- 多种权重类型：`FP8` / `FP16` / `FP32` / `INT8` / `INT4` / `INT2`
 - 多种输出类型：`FP32` / `FP16` / `BF16` / `INT8`
 
 伪代码如下：
@@ -69,6 +69,10 @@ def int_nbit_split_embedding(
     output_dtype=SparseType.FP32,
 ):
     feat_cnt = len(weights_offsets)
+    if len(indices) == 0:
+        if pooling_mode == PoolingMode.NONE:
+            return empty([0, max_row_dim(weights_tys)], dtype=output_dtype)
+        return zeros((batch, D_offsets[-1]), dtype=output_dtype)
     if pooling_mode == PoolingMode.NONE:
         outputs = []
         out_dim1 = max_row_dim(weights_tys)
@@ -107,12 +111,12 @@ def int_nbit_split_embedding(
 | lxu_cache_weights | 输入    | uint8 | NA                                             | NA | 保留参数                                            |
 | weights_placements | 输入    | int32 | [T]                                            | PlacementType | 每张表的放置策略（DEVICE/HOST/MANAGED/…）                 |
 | weights_offsets | 输入    | int64 | [T]                                            | 单调递增 | 每张表在 `dev_weights` 中的起始偏移                       |
-| weights_tys | 输入    | uint8 | [T]                                            | SparseType | 每张表的量化类型，暂时只支持FP8（FP8/INT8/FP16/FP32/INT4/INT2） |
+| weights_tys | 输入    | uint8 | [T]                                            | SparseType | 每张表的权重类型，支持 `FP8/FP16/FP32/INT8/INT4/INT2` |
 | D_offsets | 输入    | int32 | [T+1]                                          | 单调递增 | embedding 维度前缀和，用于定位各表输出区间                      |
 | indices | 输入    | int32/64 | [N]                                            | offsets[-1] | 查表索引（nobag 在适配层转成 int32）                        |
 | offsets | 输入    | 与 indices 同型 | [T*B+1]                                        | 单调递增 | bag 的起止偏移                                       |
 | lxu_cache_locations | 输入    | int32 | NA                                             | NA | 保留参数                                            |
-| offset_per_key | 输入    | int32 | [T+1]                                          | 单调递增 | 每张表在 offsets 中的起点（仅 nobag 模式使用）                 |
+| offset_per_key | 输入    | int32 | [T+1]                                          | 单调递增 | host 侧内部派生参数，表示每张表在 offsets 中的起点（仅 nobag 模式使用） |
 | indice_weights | 输入    | float | [N]                                            | NA | weighted bag 的 per-sample 权重，非加权时传空             |
 | total_D | 属性    | int64 | NA                                             | NA | 所有表 embedding 维度之和（bag 输出宽度）                    |
 | max_D | 属性    | int64 | NA                                             | NA | 各表 embedding 维度的最大值（nobag 输出宽度）                 |
@@ -127,24 +131,32 @@ def int_nbit_split_embedding(
 | row_alignment | 属性    | int64 | NA                                             | NA | 行级对齐要求（默认为 16）                                  |
 | fp8_exponent_bits | 属性    | int64 | NA                                             | NA | FP8 反量化时使用的指数位数，若未启用 FP8 传 -1                   |
 | fp8_exponent_bias | 属性    | int64 | NA                                             | NA | FP8 反量化时的 bias，若未启用 FP8 传 -1                    |
-| out | 输出    | FP32/FP16/BF16/uint8 | bag: [B, total_D]；nobag: [len(indices), max_D] | NA | 查表结果；仅当所有表的权重类型为 INT8 时才允许 uint8 输出             |
+| out | 输出    | FP32/FP16/BF16/uint8 | bag: [B, total_D]；nobag: [len(indices), max_D] | NA | 查表结果；当 `output_dtype=INT8` 时，输出按 fused rowwise INT8 形式组织，并在尾部携带 qparams |
 
 ## 约束说明
 
-- `weights_offsets.size(0) > 0`，`indices.numel() > 0`，`offsets.size(0) > 1`。
+- `weights_offsets.size(0) > 0`，`offsets.size(0) > 1`。
 - `weights_tys.size(0)` 必须等于 `weights_offsets.size(0)`。
 - bag 模式要求 `(offsets.size(0) - 1) % feat_cnt == 0`。
-- 若 `output_dtype == INT8`，则所有表的 `weights_tys` 也必须为 `INT8`。
+- `indices` 允许为空；当 `indices.numel() == 0` 时，算子直接返回 shape 合法的空/零输出。
+- `weights_tys` 含有 `INT2` 且 `output_dtype == FP32` 的测试用例，按社区对齐要求，不保证通过。
 
 ### Embedding 维度约束
 
-- FP8 权重量化时，embedding 维度 `D` 必须是 `4` 的倍数，且 `D <= 4096`。
+- embedding 维度 `D` 必须是 `4` 的倍数，且
+  - FP32 -> `D <= 2048`
+  - FP16 -> `D <= 4096`
+  - INT8 -> `D <= 4092`
+  - FP8 -> `D <= 4096`
+  - INT4 -> `D <= 4088`
+  - INT2 -> `D <= 4080`
 - nobag 模式下，所有表的 embedding 维度必须一致，即每张表的 `D_offsets[i + 1] - D_offsets[i]` 相同。
 
 ## 上层调用示例
 
 ```python
 import torch
+import fbgemm_ascend
 from fbgemm_gpu.split_embedding_configs import SparseType
 from fbgemm_gpu.split_table_batched_embeddings_ops_common import (
     EmbeddingLocation,

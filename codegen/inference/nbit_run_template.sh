@@ -21,7 +21,8 @@ set -e
 # ==============================================================================
 readonly THIS_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 readonly WORK_DIR="$(dirname "${THIS_SCRIPT}")"
-readonly UTILS_SCRIPT="${WORK_DIR}/../../../scripts/op_builder_utils.sh"
+readonly FBGEMM_ASCEND_SOURCE_ROOT="${FBGEMM_ASCEND_SOURCE_DIR:?FBGEMM_ASCEND_SOURCE_DIR must be set}"
+readonly UTILS_SCRIPT="${FBGEMM_ASCEND_SOURCE_ROOT}/src/scripts/op_builder_utils.sh"
 
 # ==============================================================================
 # 2. 加载通用库

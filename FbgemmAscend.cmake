@@ -9,7 +9,6 @@ set(ASCENDC_A5_ONLY_OPS
     expand_into_jagged_permute
     invert_permute
     init_address_lookup
-    int_nbit_split_embedding_codegen_lookup_function
     pruned_array_lookup_from_row_idx
     run_length_encode
     pruned_hashmap_lookup
@@ -125,7 +124,6 @@ set(_ASCENDC_OPS
     "jagged_to_padded_dense_v2|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense_v2"
     "select_dim1_to_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/select_dim1_to_permute"
     "permute_pooled_embs|${FBGEMM_ASCEND_SOURCE_DIR}/src/pooled_embedding_ops/permute_pooled_embs"
-    "int_nbit_split_embedding_codegen_lookup_function|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function"
     "pruned_hashmap_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_inference/pruned_hashmap_lookup"
     "pruned_array_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_inference/pruned_array_lookup"
     "backward_codegen_adagrad_unweighted_exact|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_training/backward_codegen_adagrad_unweighted_exact"
@@ -211,7 +209,6 @@ set(FBGEMM_ASCEND_ADAPTER_SRCS
     src/merge_pooled_embedding_ops/merge_pooled_embedding_ops_npu.cpp
     src/topology_utils.cpp
     src/pooled_embedding_ops/permute_pooled_embs/permute_pooled_embs.cpp
-    src/tbe_inference/int_nbit_split_embedding_codegen_lookup_function/int_nbit_split_embedding_codegen_lookup_function.cpp
     src/tbe_inference/pruned_hashmap_lookup/pruned_hashmap_lookup.cpp
     src/tbe_inference/pruned_array_lookup/pruned_array_lookup.cpp
     src/tbe_training/dense_embedding_codegen_lookup_function/dense_embedding_codegen_lookup_function.cpp

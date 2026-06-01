@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,47 +23,50 @@ See the License for the specific language governing permissions and
 #include "ops_log.h"
 
 namespace {
-    constexpr int BAG_INT32_KEY = 0;
-    constexpr int BAG_INT64_KEY = 1;
-    constexpr int NOBAG_KEY = 2;
+constexpr int BAG_INT32_KEY = 0;
+constexpr int BAG_INT64_KEY = 1;
+constexpr int NOBAG_KEY = 2;
 
-    constexpr int RESERVER_UB_SIZE = 20 * 1024;
-    constexpr int UB_ALIGN = 32;
+constexpr int RESERVER_UB_SIZE = 20 * 1024;
+constexpr int UB_ALIGN = 32;
+constexpr int DCACHE_SIZE = 192 * 1024;
 
-    constexpr int POOL_MODE_SUM = 0;
-    constexpr int POOL_MODE_MEAN = 1;
-    constexpr int POOL_MODE_NOBAG = 2;
+constexpr int POOL_MODE_SUM = 0;
+constexpr int POOL_MODE_MEAN = 1;
+constexpr int POOL_MODE_NOBAG = 2;
+constexpr int OUTPUT_DTYPE_INT8 = 2;
+constexpr int INT8_QPARAMS_BYTES = 8;
 
-    // Input indices
-    constexpr int DEV_WEIGHTS_INDEX = 0;
-    constexpr int UVM_WEIGHTS_INDEX = 1;
-    constexpr int LXU_CACHE_WEIGHTS_INDEX = 2;
-    constexpr int WEIGHTS_PLACEMENTS_INDEX = 3;
-    constexpr int WEIGHTS_OFFSETS_INDEX = 4;
-    constexpr int WEIGHTS_TYS_INDEX = 5;
-    constexpr int D_OFFSETS_INDEX = 6;
-    constexpr int INDICES_INDEX = 7;
-    constexpr int OFFSETS_INDEX = 8;
-    constexpr int LXU_CACHE_LOCATIONS_INDEX = 9;
-    constexpr int OFFSET_PER_KEY_INDEX = 10;
-    constexpr int INDICE_WEIGHTS_INDEX = 11;
+// Input indices
+constexpr int DEV_WEIGHTS_INDEX = 0;
+constexpr int UVM_WEIGHTS_INDEX = 1;
+constexpr int LXU_CACHE_WEIGHTS_INDEX = 2;
+constexpr int WEIGHTS_PLACEMENTS_INDEX = 3;
+constexpr int WEIGHTS_OFFSETS_INDEX = 4;
+constexpr int WEIGHTS_TYS_INDEX = 5;
+constexpr int D_OFFSETS_INDEX = 6;
+constexpr int INDICES_INDEX = 7;
+constexpr int OFFSETS_INDEX = 8;
+constexpr int LXU_CACHE_LOCATIONS_INDEX = 9;
+constexpr int OFFSET_PER_KEY_INDEX = 10;
+constexpr int INDICE_WEIGHTS_INDEX = 11;
 
-    // Attribute indices
-    constexpr int TOTAL_D_INDEX = 0;
-    constexpr int MAX_D_INDEX = 1;
-    constexpr int MAX_INT2_D_INDEX = 2;
-    constexpr int MAX_INT4_D_INDEX = 3;
-    constexpr int MAX_INT8_D_INDEX = 4;
-    constexpr int MAX_FLOAT16_D_INDEX = 5;
-    constexpr int MAX_FLOAT32_D_INDEX = 6;
-    constexpr int MAX_FLOAT8_D_INDEX = 7;
-    constexpr int POOL_MODE_INDEX = 8;
-    constexpr int OUTPUT_DTYPE_INDEX = 9;
-    constexpr int ROW_ALIGNMENT_INDEX = 10;
-    constexpr int FP8_EXPONENT_BITS_INDEX = 11;
-    constexpr int FP8_EXPONENT_BIAS_INDEX = 12;
+// Attribute indices
+constexpr int TOTAL_D_INDEX = 0;
+constexpr int MAX_D_INDEX = 1;
+constexpr int MAX_INT2_D_INDEX = 2;
+constexpr int MAX_INT4_D_INDEX = 3;
+constexpr int MAX_INT8_D_INDEX = 4;
+constexpr int MAX_FLOAT16_D_INDEX = 5;
+constexpr int MAX_FLOAT32_D_INDEX = 6;
+constexpr int MAX_FLOAT8_D_INDEX = 7;
+constexpr int POOL_MODE_INDEX = 8;
+constexpr int OUTPUT_DTYPE_INDEX = 9;
+constexpr int ROW_ALIGNMENT_INDEX = 10;
+constexpr int FP8_EXPONENT_BITS_INDEX = 11;
+constexpr int FP8_EXPONENT_BIAS_INDEX = 12;
 
-}
+}  // namespace
 
 namespace optiling {
 
@@ -78,8 +81,7 @@ static ge::graphStatus ShapeTilingCheckFunc(gert::TilingContext* context)
     OPS_LOG_E_IF_NULL("offsetPerKey shape", context->GetInputShape(OFFSET_PER_KEY_INDEX), return ge::GRAPH_FAILED);
     // 条件检查：只有当indice_weights存在时才检查
     if (context->GetInputShape(INDICE_WEIGHTS_INDEX) != nullptr) {
-        OPS_LOG_E_IF_NULL("indice_weights shape",
-                          context->GetInputShape(INDICE_WEIGHTS_INDEX),
+        OPS_LOG_E_IF_NULL("indice_weights shape", context->GetInputShape(INDICE_WEIGHTS_INDEX),
                           return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -107,10 +109,10 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
         isWeighted = true;
 
         // 校验：indice_weights的长度必须等于indices的长度（一一对应）
-        OPS_CHECK(indiceWeightsDim0 != indicesDim0,
-                  OPS_LOG_E("", "Len mismatch: indice_weights(%ld) must equal indices(%ld).",
-                            indiceWeightsDim0, indicesDim0),
-                  return ge::GRAPH_FAILED);
+        OPS_CHECK(
+            indiceWeightsDim0 != indicesDim0,
+            OPS_LOG_E("", "Len mismatch: indice_weights(%ld) must equal indices(%ld).", indiceWeightsDim0, indicesDim0),
+            return ge::GRAPH_FAILED);
     }
 
     auto attrs = context->GetAttrs();
@@ -124,26 +126,24 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
     // Validate D_offsets size
     OPS_CHECK(dOffsetsDim0 <= 1,
-              OPS_LOG_E("", "The length of D_offsets must be at least 2, but the actual value is %ld.",
-                        dOffsetsDim0),
+              OPS_LOG_E("", "The length of D_offsets must be at least 2, but the actual value is %ld.", dOffsetsDim0),
               return ge::GRAPH_FAILED);
 
     OPS_CHECK(dOffsetsDim0 != weightsOffsetsDim0 + 1,
-              OPS_LOG_E("", "The length of D_offsets must equal weights_offsets(%ld) + 1.",
-                        dOffsetsDim0),
+              OPS_LOG_E("", "The length of D_offsets must equal weights_offsets(%ld) + 1.", dOffsetsDim0),
               return ge::GRAPH_FAILED);
 
     // Validate weights_tys size matches weights_offsets
     OPS_CHECK(weightsTysDim0 != weightsOffsetsDim0,
-              OPS_LOG_E("", "Len mismatch: weights_tys(%ld) must equal weights_offsets(%ld).",
-                        weightsTysDim0, weightsOffsetsDim0),
+              OPS_LOG_E("", "Len mismatch: weights_tys(%ld) must equal weights_offsets(%ld).", weightsTysDim0,
+                        weightsOffsetsDim0),
               return ge::GRAPH_FAILED);
 
     // Validate offset_per_key size matches weights_offsets
-    OPS_CHECK(offsetPerKeyDim0 != dOffsetsDim0,
-              OPS_LOG_E("", "Len mismatch: offset_per_key(%ld) must equal D_offsets(%ld).",
-                        offsetPerKeyDim0, weightsOffsetsDim0),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(
+        offsetPerKeyDim0 != dOffsetsDim0,
+        OPS_LOG_E("", "Len mismatch: offset_per_key(%ld) must equal D_offsets(%ld).", offsetPerKeyDim0, dOffsetsDim0),
+        return ge::GRAPH_FAILED);
 
     // Get attributes
     int64_t totalD = *attrs->GetInt(TOTAL_D_INDEX);
@@ -160,7 +160,7 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
 
     // Validate pooling mode
     OPS_CHECK(poolMode < POOL_MODE_SUM || poolMode > POOL_MODE_NOBAG,
-              OPS_LOG_E("", "Invalid pooling mode %ld: supported modes are MEAN(0), SUM(1), NONE(2)", poolMode),
+              OPS_LOG_E("", "Invalid pooling mode %ld: supported modes are SUM(0), MEAN(1), NONE(2)", poolMode),
               return ge::GRAPH_FAILED);
 
     int64_t bytesOfDataType = sizeof(uint8_t);
@@ -168,18 +168,20 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     ge::DataType offsetsDataType = context->GetInputDesc(OFFSETS_INDEX)->GetDataType();
     ge::DataType offsetPerKeyDataType = context->GetInputDesc(OFFSET_PER_KEY_INDEX)->GetDataType();
     OPS_CHECK(indicesDataType != offsetsDataType,
-              OPS_LOG_E("", "indices dtype(%d) must match offsets dtype(%d).",
-                        static_cast<int>(indicesDataType), static_cast<int>(offsetsDataType)),
+              OPS_LOG_E("", "indices dtype(%d) must match offsets dtype(%d).", static_cast<int>(indicesDataType),
+                        static_cast<int>(offsetsDataType)),
               return ge::GRAPH_FAILED);
 
     // Calculate output shape based on pooling mode
     int64_t outDim0;
     int64_t outDim1;
-    int64_t offsetDataType;
     if (poolMode == POOL_MODE_NOBAG) {
         // nobag mode: output shape [indices_num, max_D]
         outDim0 = indicesDim0;
         outDim1 = maxD;
+        if (outputDtype == OUTPUT_DTYPE_INT8) {
+            outDim1 += INT8_QPARAMS_BYTES;
+        }
         context->SetTilingKey(NOBAG_KEY);
     } else {
         // bag mode: output shape [batch_size, total_D]
@@ -190,12 +192,13 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
                   return ge::GRAPH_FAILED);
         outDim0 = batchSize;
         outDim1 = totalD;
+        if (outputDtype == OUTPUT_DTYPE_INT8) {
+            outDim1 += weightsOffsetsDim0 * INT8_QPARAMS_BYTES;
+        }
 
         if (indicesDataType == ge::DT_INT32) {
-            offsetDataType = BAG_INT32_KEY;
             context->SetTilingKey(BAG_INT32_KEY);
         } else if (indicesDataType == ge::DT_INT64) {
-            offsetDataType = BAG_INT64_KEY;
             context->SetTilingKey(BAG_INT64_KEY);
         } else {
             OPS_LOG_E("", "indices dtype %d not supported, expect int32/int64.", static_cast<int>(indicesDataType));
@@ -219,7 +222,6 @@ static ge::graphStatus ShapeTilingFunc(gert::TilingContext* context,
     tilingData.set_outDim0(outDim0);
     tilingData.set_outDim1(outDim1);
     tilingData.set_bytesOfDataType(bytesOfDataType);
-    tilingData.set_offsetDataType(offsetDataType);
     tilingData.set_rowAlignment(rowAlignment);
     tilingData.set_fp8ExponentBits(fp8ExponentBits);
     tilingData.set_fp8ExponentBias(fp8ExponentBias);
@@ -259,6 +261,7 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
         coreNum = totalTasks < coreNum ? totalTasks : coreNum;
     }
     context->SetBlockDim(coreNum);
+    context->SetLocalMemorySize(DCACHE_SIZE);
 
     // tiling data
     int64_t splitBaseLen = totalTasks / coreNum;
@@ -302,6 +305,7 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
     int64_t totalD = *attrs->GetInt(TOTAL_D_INDEX);
     int64_t maxD = *attrs->GetInt(MAX_D_INDEX);
     int64_t poolMode = *attrs->GetInt(POOL_MODE_INDEX);
+    int64_t outputDtype = *attrs->GetInt(OUTPUT_DTYPE_INDEX);
 
     // Calculate output dimensions based on pooling mode
     int64_t weightsOffsetsDim0 = weightsOffsetsShape->GetDim(0);
@@ -312,13 +316,14 @@ static ge::graphStatus InferShape(gert::InferShapeContext* context)
         // nobag mode: output shape [indices_num, max_D]
         outputShape->SetDimNum(2);
         outputShape->SetDim(0, indicesDim0);
-        outputShape->SetDim(1, maxD);
+        outputShape->SetDim(1, outputDtype == OUTPUT_DTYPE_INT8 ? maxD + INT8_QPARAMS_BYTES : maxD);
     } else {
         // bag mode: output shape [batch_size, total_D]
         int64_t batchSize = (offsetsDim0 - 1) / weightsOffsetsDim0;
         outputShape->SetDimNum(2);
         outputShape->SetDim(0, batchSize);
-        outputShape->SetDim(1, totalD);
+        outputShape->SetDim(
+            1, outputDtype == OUTPUT_DTYPE_INT8 ? totalD + weightsOffsetsDim0 * INT8_QPARAMS_BYTES : totalD);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -331,10 +336,7 @@ public:
     explicit IntNbitSplitEmbeddingCodegenLookupFunction(const char* name) : OpDef(name)
     {
         // Input definitions
-        this->Input("dev_weights")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_UINT8})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("dev_weights").ParamType(REQUIRED).DataType({ge::DT_UINT8}).FormatList({ge::FORMAT_ND});
 
         this->Input("uvm_weights")
             .ParamType(REQUIRED)
@@ -346,15 +348,9 @@ public:
             .Follow("dev_weights", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("weights_placements")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("weights_placements").ParamType(REQUIRED).DataType({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
-        this->Input("weights_offsets")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT64})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("weights_offsets").ParamType(REQUIRED).DataType({ge::DT_INT64}).FormatList({ge::FORMAT_ND});
 
         this->Input("weights_tys")
             .ParamType(REQUIRED)
@@ -371,25 +367,16 @@ public:
             .DataTypeList({ge::DT_INT32, ge::DT_INT64})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("offsets")
-            .ParamType(REQUIRED)
-            .Follow("indices", FollowType::DTYPE)
-            .FormatList({ge::FORMAT_ND});
+        this->Input("offsets").ParamType(REQUIRED).Follow("indices", FollowType::DTYPE).FormatList({ge::FORMAT_ND});
 
         this->Input("lxu_cache_locations")
             .ParamType(REQUIRED)
             .Follow("weights_placements", FollowType::DTYPE)
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("offset_per_key")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("offset_per_key").ParamType(REQUIRED).DataType({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
-        this->Input("indice_weights")
-            .ParamType(OPTIONAL)
-            .DataType({ge::DT_FLOAT})
-            .FormatList({ge::FORMAT_ND});
+        this->Input("indice_weights").ParamType(OPTIONAL).DataType({ge::DT_FLOAT}).FormatList({ge::FORMAT_ND});
 
         // Output definition
         this->Output("out")

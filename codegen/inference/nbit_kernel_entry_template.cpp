@@ -1,4 +1,4 @@
-/* Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+/* Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -56,29 +56,25 @@ __aicore__ inline void DispatchOutputDtype(int64_t outputDtype, Args& args)
 }
 
 extern "C" __global__ __aicore__ void int_nbit_split_embedding_codegen_lookup_function(
-    GM_ADDR devWeights,           // uint8_t: quantized weights (FP8/INT8/INT4/INT2)
-    GM_ADDR uvmWeights,           // uint8_t: UVM weights
-    GM_ADDR lxuCacheWeights,      // uint8_t: cache weights
-    GM_ADDR weightsPlacements,    // int32_t: weight placement type
-    GM_ADDR weightsOffsets,       // int64_t: weight offsets for each table
-    GM_ADDR weightsTys,           // uint8_t: weight type (SparseType) for each table
-    GM_ADDR dOffsets,             // int32_t: dimension offsets for each table
-    GM_ADDR indices,              // int32_t/int64_t: indices to lookup
-    GM_ADDR offsets,              // int32_t/int64_t: offsets for bagging
-    GM_ADDR lxuCacheLocations,    // int32_t: cache locations
-    GM_ADDR offsetPerKey,         // int32_t/int64_t: 每张表在offsets中的起始位置
-    GM_ADDR indiceWeights,        // float: 新增，可选参数，weighted模式使用
-    GM_ADDR out,                  // float: output tensor
-    GM_ADDR workspace,            // workspace buffer
-    GM_ADDR tiling)               // tiling data
+    GM_ADDR devWeights,         // uint8_t: quantized weights (FP8/INT8/INT4/INT2)
+    GM_ADDR uvmWeights,         // uint8_t: UVM weights
+    GM_ADDR lxuCacheWeights,    // uint8_t: cache weights
+    GM_ADDR weightsPlacements,  // int32_t: weight placement type
+    GM_ADDR weightsOffsets,     // int64_t: weight offsets for each table
+    GM_ADDR weightsTys,         // uint8_t: weight type (SparseType) for each table
+    GM_ADDR dOffsets,           // int32_t: dimension offsets for each table
+    GM_ADDR indices,            // int32_t/int64_t: indices to lookup
+    GM_ADDR offsets,            // int32_t/int64_t: offsets for bagging
+    GM_ADDR lxuCacheLocations,  // int32_t: cache locations
+    GM_ADDR offsetPerKey,       // int32_t/int64_t: 每张表在offsets中的起始位置
+    GM_ADDR indiceWeights,      // float: 新增，可选参数，weighted模式使用
+    GM_ADDR out,                // float: output tensor
+    GM_ADDR workspace,          // workspace buffer
+    GM_ADDR tiling)             // tiling data
 {
-    Args args{
-        devWeights, uvmWeights, lxuCacheWeights,
-        weightsPlacements, weightsOffsets, weightsTys,
-        dOffsets, indices, offsets, lxuCacheLocations,
-        offsetPerKey, indiceWeights,
-        out, tiling, workspace
-    };
+    Args args{devWeights, uvmWeights, lxuCacheWeights, weightsPlacements, weightsOffsets, weightsTys,
+              dOffsets,   indices,    offsets,         lxuCacheLocations, offsetPerKey,   indiceWeights,
+              out,        tiling,     workspace};
 
     // 获取outputDtype（用于确定OutputType模板参数）
     GET_TILING_DATA(tilingData, tiling);
