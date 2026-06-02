@@ -1,0 +1,60 @@
+[
+  {
+    "op": "LxuCacheLookup",
+    "language": "cpp",
+    "input_desc": [
+      {
+        "name": "linear_cache_indices",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int64"]
+      },
+      {
+        "name": "lxu_cache_state",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int64", "int64"]
+      },
+      {
+        "name": "uvm_cache_stats",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      },
+      {
+        "name": "num_uniq_cache_indices",
+        "param_type": "optional",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+      ],
+    "output_desc": [
+      {
+        "name": "lxu_cache_locations",
+        "param_type": "required",
+        "format": ["ND", "ND"],
+        "type": ["int32", "int32"]
+      }
+      ],
+    "attr": [
+      {
+        "name": "invalid_index",
+        "param_type": "required",
+        "type": "int64",
+        "default_value": 0
+      },
+      {
+        "name": "gather_cache_stats",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      },
+      {
+        "name": "uniq_lookup",
+        "param_type": "optional",
+        "type": "bool",
+        "default_value": false
+      }
+    ]
+  }
+]

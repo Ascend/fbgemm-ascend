@@ -16,6 +16,7 @@ set(ASCENDC_A5_ONLY_OPS
     pruned_array_lookup
     lru_cache_find_uncached
     lru_cache_insert_byte
+    lxu_cache_lookup
     group_index_select_dim0
     group_index_select_dim0_backward
     jagged_dense_elementwise_binary_jagged_output
@@ -156,6 +157,7 @@ set(_ASCENDC_OPS
     "bfloat16_quantized_to_float|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/bfloat16_quantized_to_float"
     "float_to_hfp8_quantized|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/float_to_hfp8_quantized"
     "hfp8_quantized_to_float|${FBGEMM_ASCEND_SOURCE_DIR}/src/quantize_ops/hfp8_quantized_to_float"
+    "lxu_cache_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/lxu_cache_lookup"
     "direct_mapped_lxu_cache_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lxu_cache_lookup"
     "direct_mapped_lru_cache_find_uncached|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_find_uncached"
     "direct_mapped_lru_cache_insert_byte|${FBGEMM_ASCEND_SOURCE_DIR}/src/split_embeddings_cache/direct_mapped_lru_cache_insert_byte"
@@ -257,6 +259,7 @@ set(FBGEMM_ASCEND_A5_ONLY_ADAPTER_SRCS
     src/sparse_ops/group_index_select_dim0/group_index_select_dim0.cpp
     src/split_embeddings_cache/get_unique_indices/get_unique_indices.cpp
     src/split_embeddings_cache/lru_cache_populate_byte/lru_cache_populate_byte.cpp
+    src/split_embeddings_cache/lxu_cache_lookup/lxu_cache_lookup.cpp
     src/split_embeddings_cache/direct_mapped_lxu_cache_lookup/direct_mapped_lxu_cache_lookup.cpp
     src/split_embeddings_cache/direct_mapped_lru_cache_populate_byte/direct_mapped_lru_cache_populate_byte.cpp
     src/split_embeddings_cache/linearize_cache_indices/linearize_cache_indices.cpp
