@@ -19,6 +19,7 @@ set(ASCENDC_A5_ONLY_OPS
     lxu_cache_lookup
     group_index_select_dim0
     group_index_select_dim0_backward
+    jagged_dense_dense_elementwise_add_jagged_output
     jagged_dense_elementwise_binary_jagged_output
     float_to_bfloat16_quantized
     bfloat16_quantized_to_float
@@ -139,6 +140,7 @@ set(_ASCENDC_OPS
     "jagged_dense_elementwise_binary_jagged_output|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_dense_elementwise_binary_jagged_output"
     "jagged_to_padded_dense|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense"
     "jagged_to_padded_dense_v2|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_to_padded_dense_v2"
+    "jagged_dense_dense_elementwise_add_jagged_output|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/jagged_dense_dense_elementwise_add_jagged_output"
     "select_dim1_to_permute|${FBGEMM_ASCEND_SOURCE_DIR}/src/jagged_tensor_ops/select_dim1_to_permute"
     "permute_pooled_embs|${FBGEMM_ASCEND_SOURCE_DIR}/src/pooled_embedding_ops/permute_pooled_embs"
     "pruned_hashmap_lookup|${FBGEMM_ASCEND_SOURCE_DIR}/src/tbe_inference/pruned_hashmap_lookup"
@@ -226,6 +228,7 @@ set(FBGEMM_ASCEND_COMMON_ADAPTER_SRCS
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_impl_v2.cpp
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v2.cpp
     src/jagged_tensor_ops/jagged_dense_elementwise/jagged_dense_elementwise.cpp
+    src/jagged_tensor_ops/jagged_dense_dense_elementwise_add_jagged_output/jagged_dense_dense_elementwise_add_jagged_output.cpp
     src/merge_pooled_embedding_ops/merge_pooled_embedding_ops_npu.cpp
     src/topology_utils.cpp
     src/pooled_embedding_ops/permute_pooled_embs/permute_pooled_embs.cpp

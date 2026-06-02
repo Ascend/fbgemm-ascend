@@ -1,0 +1,47 @@
+[
+    {
+        "op": "JaggedDenseDenseElementwiseAddJaggedOutput",
+        "language": "cpp",
+        "input_desc": [
+            {
+                "name": "x_values",
+                "param_type": "required",
+                "format_list": ["ND"],
+                "data_type_list": ["fp32", "bf16", "fp16"]
+            },
+            {
+                "name": "dense_0",
+                "param_type": "required",
+                "format_list": ["ND"],
+                "data_type_list": ["fp32", "bf16", "fp16"]
+            },
+            {
+                "name": "dense_1",
+                "param_type": "required",
+                "format_list": ["ND"],
+                "data_type_list": ["fp32", "bf16", "fp16"]
+            },
+            {
+                "name": "offsets",
+                "param_type": "dynamic",
+                "format": ["ND"],
+                "type": ["int64", "int32"]
+            }
+        ],
+        "output_desc": [
+            {
+                "name": "out",
+                "param_type": "required",
+                "format_list": ["ND"],
+                "data_type_list": ["fp32", "bf16", "fp16"]
+            }
+        ],
+        "attr": [
+            {
+                "name": "jagged_dim0",
+                "param_type": "required",
+                "type": "int"
+            }
+        ]
+    }
+]
