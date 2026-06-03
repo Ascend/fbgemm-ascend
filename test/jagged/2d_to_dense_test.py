@@ -29,7 +29,7 @@ import torch._dynamo
 from hypothesis import given, settings, Verbosity
 import hypothesis.strategies as st
 
-from common import var_list_to_coo
+from common import var_list_to_coo, cpu_and_maybe_npu, torch_compiled
 
 
 class Jagged2DToDenseTest(unittest.TestCase):
@@ -92,6 +92,59 @@ class Jagged2DToDenseTest(unittest.TestCase):
             output_values.backward(ref_output_values)
             ref_values = ref_values.to(dtype)
             torch.testing.assert_close(ref_values, values.grad)
+
+    @settings(
+        verbosity=Verbosity.verbose,
+        max_examples=20,
+        deadline=None,
+    )
+    @given(
+        B=st.integers(min_value=2, max_value=128),
+        D=st.integers(min_value=2, max_value=128),
+        max_sequence_length=st.integers(min_value=1, max_value=200),
+        dtype=st.sampled_from([torch.float, torch.half, torch.bfloat16]),
+        device=cpu_and_maybe_npu(),
+    )
+    def test_jagged_2d_to_dense_dynamic_shape(
+        self,
+        B: int,
+        D: int,
+        max_sequence_length: int,
+        dtype: torch.dtype,
+        device: torch.device,
+    ) -> None:
+        # Start a fresh compile for each parameter of the test case
+        torch._dynamo.reset()
+
+        D = D * 4
+        lengths_ = np.random.randint(low=0, high=max_sequence_length, size=B)
+        total_lengths = lengths_.sum()
+        lengths = torch.from_numpy(lengths_)
+        offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+
+        ref_values = torch.rand(total_lengths, D)
+        ref_output_values = var_list_to_coo(
+            lengths,
+            ref_values,
+            max_sequence_length,
+            D,
+        ).to_dense()
+        ref_output_values = ref_output_values.to(dtype)
+
+        ref_values = ref_values.to(device)
+        values = ref_values.clone().to(dtype).detach().requires_grad_(True)
+        offsets = offsets.to(device)
+        ref_output_values = ref_output_values.to(device)
+        output_values = torch_compiled(torch.ops.fbgemm.jagged_2d_to_dense, dynamic=True, fullgraph=True)(
+            values=values,
+            offsets=offsets,
+            max_sequence_length=max_sequence_length,
+        )
+        torch.testing.assert_close(ref_output_values, output_values)
+
+        output_values.backward(ref_output_values)
+        ref_values = ref_values.to(dtype)
+        torch.testing.assert_close(ref_values, values.grad)
 
 
 if __name__ == "__main__":

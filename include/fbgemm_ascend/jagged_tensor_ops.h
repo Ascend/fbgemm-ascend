@@ -49,9 +49,6 @@ at::Tensor jagged_1d_to_dense_npu(at::Tensor values, at::Tensor offsets, c10::Sy
 
 at::Tensor jagged_2d_to_dense_npu(const at::Tensor& values, const at::Tensor& offsets, const int64_t max_lengths);
 
-at::Tensor jagged_2d_to_dense_autograd_npu(const at::Tensor& values, const at::Tensor& offsets,
-                                           const int64_t max_lengths);
-
 at::Tensor jagged_to_padded_dense_impl_v1(const at::Tensor& values, const at::Tensor& offsets,
                                           const int64_t max_lengths, const double padding_value);
 

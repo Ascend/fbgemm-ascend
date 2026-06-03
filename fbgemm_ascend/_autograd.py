@@ -35,6 +35,26 @@ def _jagged_dense_elementwise_add_jagged_output_backward(ctx, grad_output, grad_
     return grad_x, [None for _ in x_offsets], grad_y
 
 
+def _jagged_dense_dense_elementwise_add_jagged_output_setup_context(ctx, inputs, output):
+    x_values, x_offsets, y_0, y_1 = inputs
+    ctx.save_for_backward(x_values, y_0, y_1, *x_offsets)
+    ctx.offset_count = len(x_offsets)
+
+
+def _jagged_dense_dense_elementwise_add_jagged_output_backward(ctx, grad_output, grad_output_offsets):
+    saved = ctx.saved_tensors
+    x_values, y_0, y_1 = saved[:3]
+    x_offsets = list(saved[3 : 3 + ctx.offset_count])
+    grad_x, grad_y0, grad_y1 = torch.ops.fbgemm.jagged_dense_dense_elementwise_add_jagged_output_backward(
+        grad_output,
+        x_values,
+        x_offsets,
+        y_0,
+        y_1,
+    )
+    return grad_x, [None for _ in x_offsets], grad_y0, grad_y1
+
+
 def _jagged_dense_elementwise_mul_setup_context(ctx, inputs, output) -> None:
     x_values, x_offsets, y = inputs
     ctx.save_for_backward(x_values, y, *x_offsets)
@@ -73,24 +93,20 @@ def _jagged_1d_to_dense_backward(ctx, grad_output):
     return grad_input, None, None, None
 
 
-def _jagged_dense_dense_elementwise_add_jagged_output_setup_context(ctx, inputs, output):
-    x_values, x_offsets, y_0, y_1 = inputs
-    ctx.save_for_backward(x_values, y_0, y_1, *x_offsets)
-    ctx.offset_count = len(x_offsets)
+def _jagged_2d_to_dense_setup_context(ctx, inputs, output) -> None:
+    values, offsets, *_ = inputs
+    ctx.save_for_backward(offsets)
+    ctx.total_L = values.size(0)
 
 
-def _jagged_dense_dense_elementwise_add_jagged_output_backward(ctx, grad_output, grad_output_offsets):
-    saved = ctx.saved_tensors
-    x_values, y_0, y_1 = saved[:3]
-    x_offsets = list(saved[3 : 3 + ctx.offset_count])
-    grad_x, grad_y0, grad_y1 = torch.ops.fbgemm.jagged_dense_dense_elementwise_add_jagged_output_backward(
+def _jagged_2d_to_dense_backward(ctx, grad_output):
+    offsets = ctx.saved_tensors[0]
+    grad_input = torch.ops.fbgemm.jagged_to_padded_dense_backward(
         grad_output,
-        x_values,
-        x_offsets,
-        y_0,
-        y_1,
+        [offsets],
+        ctx.total_L,
     )
-    return grad_x, [None for _ in x_offsets], grad_y0, grad_y1
+    return grad_input, None, None
 
 
 def register_python_autograd() -> None:
@@ -99,6 +115,11 @@ def register_python_autograd() -> None:
             "fbgemm::jagged_dense_elementwise_add_jagged_output",
             _jagged_dense_elementwise_add_jagged_output_backward,
             setup_context=_jagged_dense_elementwise_add_jagged_output_setup_context,
+        )
+        torch.library.register_autograd(
+            "fbgemm::jagged_dense_dense_elementwise_add_jagged_output",
+            _jagged_dense_dense_elementwise_add_jagged_output_backward,
+            setup_context=_jagged_dense_dense_elementwise_add_jagged_output_setup_context,
         )
         torch.library.register_autograd(
             "fbgemm::jagged_dense_elementwise_mul",
@@ -111,9 +132,9 @@ def register_python_autograd() -> None:
             setup_context=_jagged_1d_to_dense_setup_context,
         )
         torch.library.register_autograd(
-            "fbgemm::jagged_dense_dense_elementwise_add_jagged_output",
-            _jagged_dense_dense_elementwise_add_jagged_output_backward,
-            setup_context=_jagged_dense_dense_elementwise_add_jagged_output_setup_context,
+            "fbgemm::jagged_2d_to_dense",
+            _jagged_2d_to_dense_backward,
+            setup_context=_jagged_2d_to_dense_setup_context,
         )
     except RuntimeError as e:
         logging.warning("fbgemm_ascend: Python autograd registration skipped: %s", e)
