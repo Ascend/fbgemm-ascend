@@ -579,7 +579,7 @@ EOF
     if [ -f "$build_script" ]; then
         (
             cd "$target_dir" || exit 1
-            bash build.sh
+            bash -e -o pipefail build.sh
         ) || return 1
     else
         echo "ERROR: build.sh not found in ${target_dir}" >&2
