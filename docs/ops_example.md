@@ -2,7 +2,8 @@
 
 ## 简介
 
-fbgemm-ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `torch.ops.fbgemm.*` 提供高性能稀疏/稠密算子，帮助推荐、搜索等场景在 Ascend 设备上获得与 GPU 同步的训练体验。项目目标是承接社区 [FBGEMM](https://github.com/pytorch/FBGEMM) 的新能力，并针对 Ascend AI Core 进行深度调优。
+fbgemm-ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `torch.ops.fbgemm.*` 提供高性能稀疏/稠密算子，帮助推荐、搜索等场景在 Ascend 设备上获得与 GPU 同等
+的训练体验。项目目标是承接社区 [FBGEMM](https://github.com/pytorch/FBGEMM) 的新能力，并针对 Ascend AI Core 进行深度调优。
 
 详细介绍请见[FBGEMM-Ascend](https://gitcode.com/Ascend/fbgemm-ascend)
 
@@ -43,7 +44,7 @@ fbgemm-ascend 是 FBGEMM 算子在昇腾 NPU 平台上的算子实现，通过 `
 
 ## 文件结构
 ```
-fbgemm-ascend/src/permute_pooled_embs_ops/
+fbgemm-ascend/src/pooled_embedding_ops/permute_pooled_embs/
 ├── c310/
 │   └── run.sh                         # 编译脚本
 ├── v220/
@@ -64,7 +65,7 @@ fbgemm-ascend/src/permute_pooled_embs_ops/
 项目可在 Atlas A2/A3/A5 训练系列产品上运行，推荐的基础环境如下：
 
 - 操作系统：Ubuntu 22.04，或其它 CANN 官方支持的 Linux 发行版。
-- Python：>= 3.8。
+- Python：版本不低于 3.8。
 - PyTorch：与 `torch_npu` 版本匹配的官方/Ascend 分发包。
 - CANN toolkit：例如 `cann-9.0.T501`，需包含 `Ascend-cann-toolkit` 与编译依赖。
 - 构建依赖：`scikit-build`、`cmake`、`ninja`、`gcc/g++`（建议 9.x 或 10.x）。
