@@ -229,6 +229,7 @@ set(FBGEMM_ASCEND_COMMON_ADAPTER_SRCS
     src/jagged_tensor_ops/jagged_to_padded_dense_v2/jagged_to_padded_dense_v2.cpp
     src/jagged_tensor_ops/jagged_dense_elementwise/jagged_dense_elementwise.cpp
     src/jagged_tensor_ops/jagged_dense_dense_elementwise_add_jagged_output/jagged_dense_dense_elementwise_add_jagged_output.cpp
+    src/jagged_tensor_ops/stacked_jagged_1d_to_dense/stacked_jagged_1d_to_dense.cpp
     src/merge_pooled_embedding_ops/merge_pooled_embedding_ops_npu.cpp
     src/topology_utils.cpp
     src/pooled_embedding_ops/permute_pooled_embs/permute_pooled_embs.cpp

@@ -173,6 +173,55 @@ class Jagged1DToDenseTest(unittest.TestCase):
         )
         torch.testing.assert_close(ref_output_values, output_values)
 
+    @settings(
+        verbosity=Verbosity.verbose,
+        max_examples=20,
+        deadline=None,
+    )
+    @given(
+        T=st.integers(min_value=1, max_value=20),
+        B=st.integers(min_value=1, max_value=128),
+        max_sequence_length=st.integers(min_value=1, max_value=500),
+        padding_value=st.integers(min_value=-100000, max_value=100000),
+        device=st.just("npu"),
+    )
+    def test_stacked_jagged_1d_to_dense(
+        self,
+        T: int,
+        B: int,
+        max_sequence_length: int,
+        padding_value: int,
+        device: torch.device,
+    ) -> None:
+        def lengths_to_segment_ids(lengths: torch.Tensor) -> torch.Tensor:
+            return torch.repeat_interleave(
+                torch._dim_arange(lengths, 0).long(),
+                lengths.long(),
+            )
+
+        lengths_ = np.random.randint(low=0, high=max_sequence_length, size=B * T)
+        total_lengths = lengths_.sum()
+        lengths = torch.from_numpy(lengths_).to(device)
+        offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+        lengths = lengths.view(T, B)
+        ref_values = torch.randint(low=0, high=1000000000, size=(total_lengths,), device=device)
+
+        values = ref_values.clone().detach().requires_grad_(False)
+        output_values_per_table = torch.ops.fbgemm.stacked_jagged_1d_to_dense(
+            values=values,
+            lengths=lengths,
+            offset_per_key=[0] + np.cumsum([lengths[t].sum().item() for t in range(T)]).tolist(),
+            max_lengths_per_key=[max_sequence_length] * T,
+            padding_value=padding_value,
+        )
+        ref_output_values = torch.ops.fbgemm.jagged_1d_to_dense(
+            values=ref_values,
+            offsets=offsets,
+            max_sequence_length=max_sequence_length,
+            padding_value=padding_value,
+        )
+        torch.testing.assert_close(ref_output_values, torch.cat(output_values_per_table))
+
 
 if __name__ == "__main__":
     unittest.main()
