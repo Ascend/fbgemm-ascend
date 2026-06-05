@@ -250,6 +250,7 @@ set(FBGEMM_ASCEND_A5_ONLY_ADAPTER_SRCS
     src/embedding_inplace_ops/emb_inplace_update/emb_inplace_update.cpp
     src/intraining_embedding_pruning_ops/init_address_lookup/init_address_lookup.cpp
     src/jagged_tensor_ops/select_dim1_to_permute/keyed_jagged_index_select_dim1.cpp
+    src/jagged_tensor_ops/stacked_jagged_2d_to_dense/stacked_jagged_2d_to_dense.cpp
     src/quantize_ops/float_to_bfloat16_quantized/float_to_bfloat16_quantized.cpp
     src/quantize_ops/bfloat16_quantized_to_float/bfloat16_quantized_to_float.cpp
     src/quantize_ops/float_to_hfp8_quantized/float_to_hfp8_quantized.cpp

@@ -146,6 +146,53 @@ class Jagged2DToDenseTest(unittest.TestCase):
         ref_values = ref_values.to(dtype)
         torch.testing.assert_close(ref_values, values.grad)
 
+    @settings(
+        verbosity=Verbosity.verbose,
+        max_examples=20,
+        deadline=None,
+    )
+    @given(
+        T=st.integers(min_value=1, max_value=5),
+        B=st.integers(min_value=1, max_value=64),
+        D=st.integers(min_value=1, max_value=128),
+        max_sequence_length=st.integers(min_value=1, max_value=300),
+        device=st.just("npu"),
+    )
+    def test_stacked_jagged_2d_to_dense(
+        self,
+        T: int,
+        B: int,
+        D: int,
+        max_sequence_length: int,
+        device: torch.device,
+    ) -> None:
+        D = D * 4
+        lengths_ = np.random.randint(low=0, high=max_sequence_length, size=B * T)
+        total_lengths = lengths_.sum()
+        lengths = torch.from_numpy(lengths_).to(device)
+        offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(lengths)
+        ref_values = torch.rand(total_lengths, D, device=device)
+        lengths = lengths.view(T, B)
+
+        values = ref_values.clone().detach().requires_grad_(True)
+        output_values_per_table = torch.ops.fbgemm.stacked_jagged_2d_to_dense(
+            values=values,
+            lengths=lengths,
+            offset_per_key=[0] + np.cumsum([lengths[t].sum().item() for t in range(T)]).tolist(),
+            max_lengths_per_key=[max_sequence_length] * T,
+        )
+        ref_output_values = torch.ops.fbgemm.jagged_2d_to_dense(
+            values=ref_values,
+            offsets=offsets,
+            max_sequence_length=max_sequence_length,
+        )
+        torch.testing.assert_close(ref_output_values, torch.cat(output_values_per_table))
+
+        # test backward
+        output_values = torch.cat(output_values_per_table)
+        output_values.backward(ref_output_values)
+        torch.testing.assert_close(ref_values, values.grad)
+
 
 if __name__ == "__main__":
     unittest.main()

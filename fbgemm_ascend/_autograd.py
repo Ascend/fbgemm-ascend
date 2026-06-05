@@ -3,6 +3,10 @@ import logging
 import torch
 
 
+def _input_count_from_needs_input_grad(ctx) -> int:
+    return len(ctx.needs_input_grad)
+
+
 def _infer_max_lengths_from_dense(dense: torch.Tensor, offset_count: int, values_dim: int) -> list[int]:
     output_without_inner = values_dim == 1
     start = 1
@@ -90,7 +94,8 @@ def _jagged_1d_to_dense_backward(ctx, grad_output):
         [offsets],
         ctx.total_L,
     )
-    return grad_input, None, None, None
+    input_count = _input_count_from_needs_input_grad(ctx)
+    return (grad_input, *([None] * (input_count - 1)))
 
 
 def _jagged_2d_to_dense_setup_context(ctx, inputs, output) -> None:
@@ -107,6 +112,33 @@ def _jagged_2d_to_dense_backward(ctx, grad_output):
         ctx.total_L,
     )
     return grad_input, None, None
+
+
+def _stacked_jagged_2d_to_dense_setup_context(ctx, inputs, output) -> None:
+    values, lengths, offset_per_key, *_ = inputs
+    offsets_tensor_per_key = [
+        torch.ops.fbgemm.asynchronous_complete_cumsum(lengths[t].contiguous()) for t in range(lengths.size(0))
+    ]
+    ctx.save_for_backward(*offsets_tensor_per_key)
+    ctx.offset_count = len(offsets_tensor_per_key)
+    ctx.offset_per_key = list(offset_per_key)
+    ctx.B = lengths.size(1)
+    ctx.D = values.size(1)
+    ctx.total_L = values.size(0)
+
+
+def _stacked_jagged_2d_to_dense_backward(ctx, grad_padded_values_per_key):
+    offsets_tensor_per_key = list(ctx.saved_tensors[: ctx.offset_count])
+    grad_values = torch.ops.fbgemm.stacked_jagged_2d_to_dense_backward(
+        ctx.B,
+        ctx.D,
+        ctx.total_L,
+        grad_padded_values_per_key,
+        offsets_tensor_per_key,
+        ctx.offset_per_key,
+    )
+    input_count = _input_count_from_needs_input_grad(ctx)
+    return (grad_values, *([None] * (input_count - 1)))
 
 
 def register_python_autograd() -> None:
@@ -135,6 +167,11 @@ def register_python_autograd() -> None:
             "fbgemm::jagged_2d_to_dense",
             _jagged_2d_to_dense_backward,
             setup_context=_jagged_2d_to_dense_setup_context,
+        )
+        torch.library.register_autograd(
+            "fbgemm::stacked_jagged_2d_to_dense",
+            _stacked_jagged_2d_to_dense_backward,
+            setup_context=_stacked_jagged_2d_to_dense_setup_context,
         )
     except RuntimeError as e:
         logging.warning("fbgemm_ascend: Python autograd registration skipped: %s", e)
